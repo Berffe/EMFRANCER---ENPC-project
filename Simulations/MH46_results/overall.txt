@@ -1,0 +1,19 @@
+CARACTÉRISTIQUES GÉNÉRALES
+
+On a utilisé une mesh dont la taille respecte le calcul de la couche limite, on a choisi la longueur de la corde en 500mm et on a imposé le bord de fuite avec 1mm de longueur pour simuler les imperfections de fabrication. De plus, pour la première simulation (fait en 5 dégrées), on a choisi la maille en peu trop détaillé, ce qui rendu la simulation trop lente. Pour les simulations suivantes on l'as ajusté (Base size: 30mm -> 50mm; Block size: 3mm -> 5mm). 
+
+De plus, des valeurs importantes sont: 
+	density, rho = 1.18415
+	velocity, U = 15;
+	pressure coefficient, p_inf = 133.22;
+	p_inf*chorde = 66.608;
+
+0 dégrées:	x_cp = 0.1054m; trainée = 0.8233N (Cd = 0.01236); portance = 4.3141N (Cl = 0.06477)
+5* dégrées: 	x_cp = 0.1237m; trainée = 1.6997N (Cd = 0.026); portance = 31.2732N (Cl = 0.47)
+10 dégrées: 	x_cp = 0.1265m; trainée = 3.8938N (Cd = 0.058); portance = 57.7360N (Cl = 0.864)
+15 dégrées: 	x_cp = 0.1305m; trainée = 7.3567N (Cd = 0.11045); portance = 82.3298N (Cl = 1.2360)
+
+30 dégrées:	x_cp* = 0.2149m; trainée* = 7.3567N (Cd = 0.11045); portance* = 82.3298N (Cl = 1.2360)
+Dans cet inclination, la solution ne converge pas.
+
+http://airfoiltools.com/airfoil/details?airfoil=mh46-il
