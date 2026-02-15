@@ -16,16 +16,16 @@ def parametrize_many_by_arclength(arrX, arrY, arrZ, **vars_1d):
       splines: dict mapping name -> CubicSpline(s, values)
                and also 'x','y','z' for coordinates.
     """
-    x = np.asarray(arrX, float).ravel()
-    y = np.asarray(arrY, float).ravel()
-    z = np.asarray(arrZ, float).ravel()
+    x = np.asarray(arrX, float)
+    y = np.asarray(arrY, float)
+    z = np.asarray(arrZ, float)
     N = x.size
     if not (y.size == N and z.size == N):
         raise ValueError("X, Y, Z must have same length")
 
     extras = {}
     for k, v in vars_1d.items():
-        vv = np.asarray(v, float).ravel()
+        vv = np.asarray(v, float)
         if vv.size != N:
             raise ValueError(f"{k} must have length {N}, got {vv.size}")
         extras[k] = vv
@@ -64,8 +64,8 @@ def eval_at_s(s_query, splines, keys=None):
     return {k: splines[k](s_query) for k in keys}
 
 def interp_v_at_z(V, Z, z, clamp=True):
-    V = np.asarray(V, dtype=float).ravel()
-    Z = np.asarray(Z, dtype=float).ravel()
+    V = np.asarray(V, dtype=float)
+    Z = np.asarray(Z, dtype=float)
 
     order = np.argsort(Z)
     Zs = Z[order]
@@ -132,8 +132,8 @@ def main():
 	#################################################################################################################################
     ###### CONTROL CENTER ###########################################################################################################
 	epaisseur_wall = 0.1 		# Il faut choisir selon l'analyse d'impression 3D
-	which_section = "All"		# Selon la section d'aile
-	folder_name = "All"		# Name of the folder you are creating
+	which_section = "Winglet"		# Selon la section d'aile
+	folder_name = "Winglet"		# Name of the folder you are creating
 	folder_location = r"C:\Users\Pipef\OneDrive\Academiques\Projet\Developpement\Modeles3D_Star\Final\AileCercle"
 
 	s, spl = parametrize_many_by_arclength(
@@ -141,15 +141,15 @@ def main():
 		chord=DS_curve.cordes,
 		BF=DS_curve.epaisseurs_BF,
 	)
-	S_params = np.linspace(s[0], s[-1], 100)
+	## Recommendation: Fuselage -> 0:180; Wing -> 185:500; Pre-Winglet -> 505:640; Winglet -> 645:End
+	# first_s = s[0]; last_s = s[-1]
+	S_params = np.linspace(555, s[-1], 10)
 	S_curve = eval_at_s(S_params, spl, keys=["x","y","z","chord","BF"])     # (500,3)
 	Xns, Yns, Zns = S_curve["x"], S_curve["y"], S_curve["z"]
 	chords_n, BFs_n = S_curve["chord"], S_curve["BF"]
-	## Recommendation: Fuselage -> 0:120; Wing -> 125:450; Pre-Winglet -> 450: 500; Winglet -> 500:End
 	#################################################################################################################################
 	#################################################################################################################################
 
-	print(DS_curve.cordes)
 	for which in range(len(S_params)):
 		chord_mm = chords_n[which]
 		x_plane = Xns[which]
@@ -171,7 +171,7 @@ def main():
 			profils_dat_dir="ProfilsDAT",
 		)
 
-		java_name = '%s_WingSection_CutTE%d'%(which_section, which)
+		java_name = '%s_WingSection_CutTE%d'%(which_section, S_params[which])
 		java = generate_star_macro_java_plane_and_section(
 			macro_class=java_name,
 			translation_m=(x_plane*1e-3, y_plane*1e-3, z_plane*1e-3),
