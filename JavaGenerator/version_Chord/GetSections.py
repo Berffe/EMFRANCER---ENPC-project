@@ -83,7 +83,7 @@ def main():
 		x_plane = DS_curve.X[which]
 		y_plane = DS_curve.Y[which]
 		z_plane = DS_curve.Z[which]
-		diedre = DS_curve.diedres[which]
+		diedre = -get_diedre(DS_curve.Z[which], DS_curve.Y, DS_curve.Z)
 		epaisseur_BF = DS_curve.epaisseurs_BF[which]
 		incidence_ang = QC_funcs.INC_OF_Z(DS_curve.Z[which])
 

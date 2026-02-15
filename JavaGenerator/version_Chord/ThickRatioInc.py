@@ -12,7 +12,6 @@ class DS_curve:
 	Y = design["Y"].to_numpy()
 	Z = design["Z"].to_numpy()
 	cordes = design["Corde"].to_numpy()
-	diedres = design["Diedre"].to_numpy()
 	epaisseurs_BF = design["Epaisseur_BF"].to_numpy()
 
 ###############################################################################################################
