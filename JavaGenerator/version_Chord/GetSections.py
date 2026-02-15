@@ -77,19 +77,21 @@ def main():
 	which_section = "All"		# Selon la section d'aile
 	folder_name = "All"		# Name of the folder you are creating
 	folder_location = r"C:\Users\Pipef\OneDrive\Academiques\Projet\Developpement\Modeles3D_Star\Courbe_Guide\version_Excel"
+	Z_max = np.max(DS_curve.Z)
+	interest_Zs = np.linspace(0, Z_max, 10)		# Changer selon la section!
+	## Recommendation: Fuselage -> 0:120; Wing -> 125:450; Pre-Winglet -> 450: 500; Winglet -> 500:End
 
-	for which in range(0, DS_curve.Z.size):
-		chord_mm = DS_curve.cordes[which]
-		x_plane = DS_curve.X[which]
-		y_plane = DS_curve.Y[which]
-		z_plane = DS_curve.Z[which]
-		diedre = -get_diedre(DS_curve.Z[which], DS_curve.Y, DS_curve.Z)
-		epaisseur_BF = DS_curve.epaisseurs_BF[which]
-		incidence_ang = QC_funcs.INC_OF_Z(DS_curve.Z[which])
+	for zed in interest_Zs:
+		chord_mm = interp_v_at_z(DS_curve.cordes, DS_curve.Z, zed, clamp=True)
+		x_plane = interp_v_at_z(DS_curve.X, DS_curve.Z, zed, clamp=True)
+		y_plane = interp_v_at_z(DS_curve.Y, DS_curve.Z, zed, clamp=True)
+		diedre = -get_diedre(zed, DS_curve.Y, DS_curve.Z)
+		epaisseur_BF = interp_v_at_z(DS_curve.epaisseurs_BF, DS_curve.Z, zed, clamp=True)
+		incidence_ang = QC_funcs.INC_OF_Z(zed)
 
 		outer, inner, link_up, link_low = compute_outer_inner_and_te_links(
-			thick_in_z = QC_funcs.T_OF_Z(DS_curve.Z[which]),
-			w_in_z =  QC_funcs.W_OF_Z(DS_curve.Z[which]),
+			thick_in_z = QC_funcs.T_OF_Z(zed),
+			w_in_z =  QC_funcs.W_OF_Z(zed),
 			chord_mm=chord_mm,
 			ep_BF_mm=epaisseur_BF,
 			ep_WALL_mm=epaisseur_wall,
@@ -99,10 +101,10 @@ def main():
 			profils_dat_dir="ProfilsDAT",
 		)
 
-		java_name = '%s_WingSection_CutTE%d'%(which_section, DS_curve.Z[which])
+		java_name = '%s_WingSection_CutTE%d'%(which_section, zed)
 		java = generate_star_macro_java_plane_and_section(
 			macro_class=java_name,
-			translation_m=(x_plane*1e-3, y_plane*1e-3, z_plane*1e-3),
+			translation_m=(x_plane*1e-3, y_plane*1e-3, zed*1e-3),
 			dihedral_deg=diedre,
 			outer_xy_m=outer,
 			inner_xy_m=inner,

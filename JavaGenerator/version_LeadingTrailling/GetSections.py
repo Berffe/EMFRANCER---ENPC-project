@@ -79,7 +79,7 @@ def main():
 	folder_name = "JAVA_Winglet"		# Name of the folder you are creating
 	folder_location = r"C:\Users\Pipef\OneDrive\Academiques\Projet\Developpement\Modeles3D_Star\Final\Aile2"
 	Z_max = np.max(QC_cg.cg_Z*1e3)
-	interest_Zs = np.linspace(500, Z_max, 10)		# Changer selon la section!
+	interest_Zs = np.linspace(0, Z_max, 10)		# Changer selon la section!
 
 	for zed in interest_Zs:
 		chord_mm, x_plane, y_plane = get_chorde(zed, QC_att.at_X*1e3, 
