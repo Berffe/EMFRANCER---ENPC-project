@@ -8,14 +8,14 @@ from _makeProfile import schedule_pchip
 # Prends les courbes du borde d'attaque et du borde de fuite fait en CATIA
 attaque = pd.read_csv("attaque_datum_aile2.csv", sep=';') 
 class QC_att:
-	at_X = attaque["X"].to_numpy()
-	at_Y = -attaque["Y"].to_numpy()
-	at_Z = attaque["Z"].to_numpy()
+	at_X = attaque["X"].to_numpy()*1e3
+	at_Y = -attaque["Y"].to_numpy()*1e3
+	at_Z = attaque["Z"].to_numpy()*1e3
 fuite = pd.read_csv("fuite_datum_aile2.csv", sep=';')
 class QC_fuite:
-	ft_X = fuite["X"].to_numpy()
-	ft_Y = -fuite["Y"].to_numpy()
-	ft_Z = fuite["Z"].to_numpy()
+	ft_X = fuite["X"].to_numpy()*1e3
+	ft_Y = -fuite["Y"].to_numpy()*1e3
+	ft_Z = fuite["Z"].to_numpy()*1e3
 
 # Trouve le centre de rotation en Matlab
 f = 0.25  # fraction from curve1 to curve2
@@ -26,7 +26,7 @@ class QC_cg:
 
 ###############################################################################################################
 ######### CONTROL CENTER ######################################################################################
-Z_max = np.max(QC_att.at_Z*1e3)
+Z_max = np.max(QC_att.at_Z)
 zInc_cluster = [0, 130, 300, 450, 510, 540, Z_max]
 inc_cluster = [6.22, 7.1, 6.6, 5.59, 1.5, 0, 0]	   
 
@@ -73,7 +73,7 @@ def main():
 	ax1.scatter(zThick_cluster, t_cluster)
 	ax1.set_ylabel("Relative thickness (mm/mm)")
 	ax2 = ax1.twinx()
-	ax2.plot(QC_cg.cg_Z*1e3, QC_cg.cg_Y*1e3, label='Vue Face')
+	ax2.plot(QC_cg.cg_Z, QC_cg.cg_Y, label='Vue Face')
 	ax2.set_ylabel("Y (mm)")	
 	ax1.legend()
 	ax2.legend()
@@ -84,7 +84,7 @@ def main():
 	ax1.scatter(zW_cluster, w_cluster*100)
 	ax1.set_ylabel("Proportion (%)")
 	ax2 = ax1.twinx()
-	ax2.plot(QC_cg.cg_Z*1e3, QC_cg.cg_Y*1e3, label='Vue Face')
+	ax2.plot(QC_cg.cg_Z, QC_cg.cg_Y, label='Vue Face')
 	ax2.set_ylabel("Y (mm)")
 	ax1.legend()
 	ax2.legend()
@@ -95,7 +95,7 @@ def main():
 	ax1.set_ylabel("Incidence (°)")
 	ax1.scatter(zInc_cluster, inc_cluster)
 	ax2 = ax1.twinx()
-	ax2.plot(QC_cg.cg_Z*1e3, QC_cg.cg_Y*1e3, label='Vue Face')
+	ax2.plot(QC_cg.cg_Z, QC_cg.cg_Y, label='Vue Face')
 	ax2.set_ylabel("Y (mm)")
 	ax1.legend()
 	ax2.legend()
