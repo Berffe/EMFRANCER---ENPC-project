@@ -121,7 +121,7 @@ def main():
 	)
 	## Recommendation: Fuselage -> 0:180; Wing -> 185:500; Pre-Winglet -> 505:640; Winglet -> 645:End
 	# first_s = s[0]; last_s = s[-1]
-	S_params = np.linspace(555, s[-1], 10)
+	S_params = np.linspace(640, s[-1], 10)
 	S_curve = eval_at_s(S_params, spl, keys=["x","y","z","chord","BF"])     # (500,3)
 	Xns, Yns, Zns = S_curve["x"], S_curve["y"], S_curve["z"]
 	chords_n, BFs_n = S_curve["chord"], S_curve["BF"]
