@@ -3,3 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pt
+venv
+
+dataset
+runs
+output
+yolov8n_ncnn_model

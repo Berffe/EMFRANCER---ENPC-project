@@ -1,0 +1,43 @@
+#######################################################################################################################
+1 - Configure SSH (for remote access) during boot;
+2 - Video data output: .mp4 + jsonl -> saves memory and still annotate where needed.
+      SSHFS allows having a RaspPi folder in my own laptop;
+3 - Decision making logic running in slow loop;
+
+Camera -> record optimized H.264 videos;
+Python -> receives low-res, save the computer vision annotation via JSON;
+Python2 -> get's information from the annotations and decides whether landing zone is 
+	clear or not -> FLAG/ JSON (flickering robust -> check if every M in the last N 
+	frames are coherent);
+
+Caveats:
+	- yolo8np -> ncm (faster for RaspberryPi)
+	- HAT can improve the speed on the AI detection
+#######################################################################################################################
+
+#######################################################################################################################
+INTERESTING COMMANDS:
+# LAPTOP
+arp -a 						## Finds connected devices (brittle)
+ssh berffe@~number~		## Connects to the Board
+rsync -av ./models/yolo8n.pt berffe@192.168.0.34:~/projects/flyingwing/models/ ## Pushes files to the Board (Ubuntu)
+
+# RASPBERRY PI
+hostname -I					## Gets the RaspberryPi IP address
+ls -la 						## List hidden folders
+rsync -av berffe@192.168.0.34:~/data/flights/ ~/flyingwing_flights/			## Pull files from the board
+#######################################################################################################################
+
+#######################################################################################################################
+Decision Making Logic:
+1 - Model Trained 
+	a - Take ready model or create/ train our own?
+
+2 - Implement camera functionnalities in RaspberryPi
+	a - Streaming or just saving locally?
+
+3 - Integrate the ComputerVision model into the camer workflow
+4 - Integrate the images processed to our DecisionMaker
+	a - Landing clear? 
+
+#######################################################################################################################
