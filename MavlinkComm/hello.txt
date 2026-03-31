@@ -1,0 +1,18 @@
+OVERALL COMMUNICATION PLAN
+
+QGroundControl (QGC)  <----->  Pixhawk (PIX)  <-----> RaspberryPi (RP)
+
+1 - QGC starts mission: 
+	Décollage, interest points, surveillance trajectories, ... ;
+	Finally -> (a) reaches landing spot, (b) enter LOITER/ CIRCLE, (c) pauses mission, that is, freezes in loiter and keeps monitoring the flight (telemetries)
+
+2 - RP lands:
+	Runs image algorithms to identify landing zone conditions and, in case it is safe, (a) sends the LAND command to the PIX, otherwise, (b) keeps loitering and assessing;
+
+#1 IMPORTANT -> at any point, the QGC has autonomy, with user input, to input a command (such as return to base, land, manual control, etc.). That means the QGC has authority over the RP at any point, that's why we pause the mission to allow RP to decide the landing.
+
+#2 IMPORTANT -> all the devices will be connecter to the PIX by serial ports: 3 devices! Telemetry Radio (QGC), RaspberryPi (RP) and the RC receiver for when/ if we enter manual control.
+
+Spectrum -> module radiocommande pour des télémétries
+
+
