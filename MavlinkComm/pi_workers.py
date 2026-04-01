@@ -97,6 +97,7 @@ def inference_worker(
 	frame_queue,
 	detection_queue,
 	debug_counter,
+	log_dir,
 ) -> None:
 	import os
 	import queue
@@ -167,7 +168,7 @@ def inference_worker(
 				detections,
 			)
 
-			detections_path = LOG_DIR / f"segment_{pkt.segment_index:04d}.detections.jsonl"
+			detections_path = log_dir / f"segment_{pkt.segment_index:04d}.detections.jsonl"
 			write_jsonl(
 				detections_path,
 				{

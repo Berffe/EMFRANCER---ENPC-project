@@ -9,7 +9,7 @@ BIN_PATH    = MODEL_DIR / "model.ncnn.bin"
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-_mission_ts = os.environ.get("MISSION_TS")
+_mission_ts = datetime.now().strftime("%d_%m_%Y_%H%M%S")
 OUTPUT_ROOT = PROJECT_ROOT / f"mission_{_mission_ts}"
 VIDEO_DIR   = OUTPUT_ROOT / "video"
 LOG_DIR     = OUTPUT_ROOT / "logs"

@@ -1,14 +1,10 @@
-import os
-from datetime import datetime
-os.environ["MISSION_TS"] = datetime.now().strftime("%d_%m_%Y_%H%M%S")
-
 import multiprocessing as mp
 import queue
 import threading
 import time
 import cv2
 
-from pi_config import DISPLAY, MAVLINK_ENABLED, MAVLINK_CONNECTION
+from pi_config import DISPLAY, MAVLINK_ENABLED, MAVLINK_CONNECTION, LOG_DIR
 from pi_utils import ensure_dirs, write_mission_meta
 from pi_camera import CameraManager
 from mavlink_client import MAVLinkClient
@@ -49,7 +45,7 @@ def main() -> None:
 		target=inference_worker,
 		daemon=True,
 		name="inference-process",
-		args=(stop_event, ready_event, frame_queue, detection_queue, debug_counter),
+		args=(stop_event, ready_event, frame_queue, detection_queue, debug_counter, LOG_DIR),
 	)
 	infer_proc.start()
 
