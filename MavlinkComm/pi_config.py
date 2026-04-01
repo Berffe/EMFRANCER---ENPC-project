@@ -8,13 +8,13 @@ BIN_PATH    = MODEL_DIR / "model.ncnn.bin"
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-OUTPUT_ROOT = PROJECT_ROOT / "31_03_2026_mission001"
+OUTPUT_ROOT = PROJECT_ROOT / "01_04_2026_mission001"
 VIDEO_DIR   = OUTPUT_ROOT / "video"
 LOG_DIR     = OUTPUT_ROOT / "logs"
 DEBUG_DIR   = OUTPUT_ROOT / "debug"
 
 MAIN_SIZE        = (1920, 1080)
-LORES_SIZE       = (512, 384)
+LORES_SIZE       = (512, 288)
 FRAME_RATE       = 30
 SEGMENT_SECONDS  = 300
 INFERENCE_PERIOD = 0.5

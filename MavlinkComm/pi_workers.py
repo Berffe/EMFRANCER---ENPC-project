@@ -1,4 +1,3 @@
-# pi_workers.py
 import os
 import queue
 import time
@@ -7,6 +6,7 @@ from dataclasses import asdict
 from pi_config import (
 	SEGMENT_SECONDS,
 	INFERENCE_PERIOD,
+	FRAME_RATE,
 	LOG_DIR,
 )
 from pi_types import FramePacket, DetectionPacket
@@ -48,6 +48,14 @@ def frame_pump_worker(stop_event, camera, frame_queue) -> None:
 				time.sleep(0.01)
 				continue
 
+			segment_index, segment_start_ts, _ = camera.get_current_segment_info()
+			if segment_index < 0:
+				time.sleep(0.01)
+				continue
+
+			segment_t_sec = max(0.0, now - segment_start_ts)
+			estimated_main_frame_idx = round(segment_t_sec * FRAME_RATE)
+
 			# Convert only when we actually need a frame for inference
 			frame_bgr = cv2.cvtColor(lores_raw, cv2.COLOR_YUV2BGR_I420)
 		except Exception as e:
@@ -55,7 +63,14 @@ def frame_pump_worker(stop_event, camera, frame_queue) -> None:
 			time.sleep(0.05)
 			continue
 
-		pkt = FramePacket(frame_id, now, frame_bgr)
+		pkt = FramePacket(
+			frame_id,
+			now,
+			segment_index,
+			segment_t_sec,
+			estimated_main_frame_idx,
+			frame_bgr,
+		)
 
 		try:
 			frame_queue.put_nowait(pkt)
@@ -88,7 +103,6 @@ def inference_worker(
 		DISPLAY,
 		SAVE_DEBUG_FRAME_EVERY,
 		DEBUG_DIR,
-		LOG_DIR,
 	)
 	from ncnn_wrapper import load_model_meta, load_ncnn_model, infer_ncnn, draw_detections
 	from pi_types import DetectionPacket
@@ -98,14 +112,13 @@ def inference_worker(
 
 	try:
 		os.sched_setaffinity(0, {2, 3})
-		print("[infer] pinned to CPU cores {2, 3}")
+		print("[infer] pinned to CPU cores {2, 3, 4}")
 	except Exception as e:
 		print(f"[warning] could not set CPU affinity: {e}")
 
 	try:
 		meta = load_model_meta(str(META_PATH))
 		net = load_ncnn_model(str(PARAM_PATH), str(BIN_PATH), use_vulkan=False)
-		detections_path = LOG_DIR / "detections.jsonl"
 	except Exception as e:
 		print(f"[infer] startup error: {e}")
 		ready_event.set()  # avoid deadlocking main on startup wait
@@ -137,13 +150,24 @@ def inference_worker(
 				print(f"[infer] error on frame {getattr(pkt, 'frame_id', 'unknown')}: {e}")
 				continue
 
-			det_pkt = DetectionPacket(pkt.frame_id, pkt.timestamp, infer_ms, detections)
+			det_pkt = DetectionPacket(
+				pkt.frame_id,
+				pkt.timestamp,
+				pkt.segment_index,
+				pkt.segment_t_sec,
+				pkt.estimated_main_frame_idx,
+				infer_ms,
+				detections,
+			)
 
+			detections_path = LOG_DIR / f"segment_{pkt.segment_index:04d}.detections.jsonl"
 			write_jsonl(
 				detections_path,
 				{
-					"frame_id": det_pkt.frame_id,
-					"timestamp": det_pkt.timestamp,
+					"sample_id": det_pkt.frame_id,
+					"capture_ts_unix": det_pkt.timestamp,
+					"segment_t_sec": det_pkt.segment_t_sec,
+					"estimated_main_frame_idx": det_pkt.estimated_main_frame_idx,
 					"inference_ms": det_pkt.inference_ms,
 					"detections": det_pkt.detections,
 				},
@@ -163,6 +187,8 @@ def inference_worker(
 
 			print(
 				f"[infer] frame={pkt.frame_id:06d} "
+				f"segment={pkt.segment_index:04d} "
+				f"main_frame={pkt.estimated_main_frame_idx:06d} "
 				f"detections={len(detections)} "
 				f"infer_ms={infer_ms:.1f}"
 			)

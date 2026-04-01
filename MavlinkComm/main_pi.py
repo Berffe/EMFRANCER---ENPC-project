@@ -6,7 +6,7 @@ import time
 import cv2
 
 from pi_config import DISPLAY
-from pi_utils import ensure_dirs
+from pi_utils import ensure_dirs, write_mission_meta
 from pi_camera import CameraManager
 from pi_workers import (
 	segment_rotator_worker,
@@ -18,6 +18,7 @@ from pi_workers import (
 
 def main() -> None:
 	ensure_dirs()
+	write_mission_meta()
 
 	stop_event = mp.Event()
 	ready_event = mp.Event()

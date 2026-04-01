@@ -1,5 +1,5 @@
-# pi_camera.py
 import threading
+import time
 from pathlib import Path
 
 from picamera2 import Picamera2
@@ -29,8 +29,13 @@ class CameraManager:
 		self.picam2.configure(config)
 		self.encoder = H264Encoder(bitrate=VIDEO_BITRATE, repeat=True, iperiod=15)
 
-		self._segment_index = 0
+		self._next_segment_index = 0
+		self._current_segment_index = -1
+		self._current_segment_path = None
+		self._current_segment_start_ts = 0.0
+
 		self._recording_lock = threading.Lock()
+		self._segment_lock = threading.Lock()
 
 		# Cache raw lores frame, not converted BGR
 		self._latest_lores_raw = None
@@ -64,6 +69,14 @@ class CameraManager:
 				return None
 			return self._latest_lores_raw.copy()
 
+	def get_current_segment_info(self):
+		with self._segment_lock:
+			return (
+				self._current_segment_index,
+				self._current_segment_start_ts,
+				self._current_segment_path,
+			)
+
 	def start_new_segment(self) -> Path:
 		with self._recording_lock:
 			try:
@@ -71,7 +84,15 @@ class CameraManager:
 			except Exception:
 				pass
 
-			out_path = VIDEO_DIR / f"segment_{self._segment_index:04d}.{CONTAINER_EXT}"
+			segment_index = self._next_segment_index
+			out_path = VIDEO_DIR / f"segment_{segment_index:04d}.{CONTAINER_EXT}"
 			self.picam2.start_recording(self.encoder, FileOutput(str(out_path)))
-			self._segment_index += 1
+
+			start_ts = time.time()
+			with self._segment_lock:
+				self._current_segment_index = segment_index
+				self._current_segment_path = out_path
+				self._current_segment_start_ts = start_ts
+
+			self._next_segment_index += 1
 			return out_path
