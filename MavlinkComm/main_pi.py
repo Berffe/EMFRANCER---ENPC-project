@@ -1,3 +1,7 @@
+import os
+from datetime import datetime
+os.environ["MISSION_TS"] = datetime.now().strftime("%d_%m_%Y_%H%M%S")
+
 import multiprocessing as mp
 import queue
 import threading
@@ -22,6 +26,8 @@ from pi_workers import (
 def main() -> None:
 	ensure_dirs()
 	write_mission_meta()
+	if not MAVLINK_ENABLED:
+			print("[main] *** MAVLINK DISABLED — commands will be suppressed ***")
 
 	stop_event = mp.Event()
 	ready_event = mp.Event()

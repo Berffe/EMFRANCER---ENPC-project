@@ -18,7 +18,7 @@ from pi_types import (
 	CommandPacket,
 	VehicleStatePacket,
 )
-from pi_utils import write_jsonl
+from pi_utils import write_jsonl, latest_put
 from decision import DecisionEngine
 from mavlink_client import MAVLinkError
 
@@ -81,7 +81,7 @@ def frame_pump_worker(stop_event, camera, frame_queue) -> None:
 		)
 
 		try:
-			frame_queue.put_nowait(pkt)
+			latest_put(frame_queue, pkt)
 		except queue.Full:
 			pass
 		except Exception as e:
@@ -187,7 +187,7 @@ def inference_worker(
 				pass
 
 			try:
-				detection_queue.put_nowait(det_pkt)
+				latest_put(detection_queue, det_pkt)
 			except Exception:
 				pass
 

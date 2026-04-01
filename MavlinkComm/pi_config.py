@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+from datetime import datetime
 
 MODEL_DIR   = Path("MODEL_best_ncnn")
 META_PATH   = MODEL_DIR / "metadata.yaml"
@@ -7,7 +9,8 @@ BIN_PATH    = MODEL_DIR / "model.ncnn.bin"
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-OUTPUT_ROOT = PROJECT_ROOT / "01_04_2026_mission002"
+_mission_ts = os.environ.get("MISSION_TS")
+OUTPUT_ROOT = PROJECT_ROOT / f"mission_{_mission_ts}"
 VIDEO_DIR   = OUTPUT_ROOT / "video"
 LOG_DIR     = OUTPUT_ROOT / "logs"
 DEBUG_DIR   = OUTPUT_ROOT / "debug"
@@ -26,7 +29,7 @@ CONTAINER_EXT    = "h264"
 VIDEO_BITRATE    = 8_000_000
 BUFFER_COUNT = 8
 
-MAVLINK_ENABLED = True
+MAVLINK_ENABLED = False
 MAVLINK_CONNECTION = "serial:/dev/ttyAMA0:57600"
 MAVLINK_SUPPRESS_DUPLICATES = True
 

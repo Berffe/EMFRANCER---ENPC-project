@@ -148,30 +148,31 @@ class MAVLinkClient:
 			"gps_fix": None,
 		}
 
+		# mavlink_client.py — replace the blocking reads in get_vehicle_state()
+
 		with self._io_lock:
-			hb = master.recv_match(type="HEARTBEAT", blocking=True, timeout=2.0)
-			if hb:
-				self._last_heartbeat_time = time.time()
-				state["armed"] = bool(
-					hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
-				)
-				state["mode"] = mavutil.mode_string_v10(hb)
+			# Drain the receive buffer non-blocking, categorising each message
+			deadline = time.time() + 0.2   # 200ms max, not 8s
+			while time.time() < deadline:
+				msg = master.recv_match(blocking=False)
+				if msg is None:
+					break
+				mtype = msg.get_type()
+				if mtype == "HEARTBEAT":
+					self._last_heartbeat_time = time.time()
+					state["armed"] = bool(
+						msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
+					)
+					state["mode"] = mavutil.mode_string_v10(msg)
+				elif mtype == "GLOBAL_POSITION_INT":
+					state["lat"]        = msg.lat / 1e7
+					state["lon"]        = msg.lon / 1e7
+					state["altitude_m"] = msg.relative_alt / 1000.0
+				elif mtype == "SYS_STATUS":
+					state["voltage_V"]  = msg.voltage_battery / 1000.0
+				elif mtype == "GPS_RAW_INT":
+					state["gps_fix"]    = msg.fix_type
 
-			pos = master.recv_match(type="GLOBAL_POSITION_INT", blocking=True, timeout=2.0)
-			if pos:
-				state["lat"] = pos.lat / 1e7
-				state["lon"] = pos.lon / 1e7
-				state["altitude_m"] = pos.relative_alt / 1000.0
-
-			sys = master.recv_match(type="SYS_STATUS", blocking=True, timeout=2.0)
-			if sys:
-				state["voltage_V"] = sys.voltage_battery / 1000.0
-
-			gps = master.recv_match(type="GPS_RAW_INT", blocking=True, timeout=2.0)
-			if gps:
-				state["gps_fix"] = gps.fix_type
-
-		return state
 
 	def get_current_mode(self) -> Optional[str]:
 		return self.get_vehicle_state().get("mode")
