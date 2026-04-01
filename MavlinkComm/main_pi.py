@@ -1,18 +1,19 @@
-# main_pi.py
 import multiprocessing as mp
 import queue
 import threading
 import time
 import cv2
 
-from pi_config import DISPLAY
+from pi_config import DISPLAY, MAVLINK_ENABLED, MAVLINK_CONNECTION
 from pi_utils import ensure_dirs, write_mission_meta
 from pi_camera import CameraManager
+from mavlink_client import MAVLinkClient
 from pi_workers import (
 	segment_rotator_worker,
 	frame_pump_worker,
 	inference_worker,
 	decision_worker,
+	command_worker,
 )
 
 
@@ -25,7 +26,14 @@ def main() -> None:
 
 	frame_queue = mp.Queue(maxsize=1)
 	detection_queue = mp.Queue(maxsize=1)
+	command_queue = queue.Queue(maxsize=1)
 	debug_counter = mp.Value("i", 0)
+
+	mavlink_client = MAVLinkClient(
+		connection_string=MAVLINK_CONNECTION,
+		enabled=MAVLINK_ENABLED,
+	)
+	mavlink_client.connect()
 
 	infer_proc = mp.Process(
 		target=inference_worker,
@@ -39,6 +47,7 @@ def main() -> None:
 	if not ready_event.wait(timeout=15.0):
 		print("[main] inference process failed to become ready in time.")
 		stop_event.set()
+		mavlink_client.close()
 		if infer_proc.is_alive():
 			infer_proc.terminate()
 			infer_proc.join(timeout=1.0)
@@ -64,7 +73,13 @@ def main() -> None:
 			target=decision_worker,
 			daemon=True,
 			name="decision",
-			args=(stop_event, detection_queue),
+			args=(stop_event, detection_queue, command_queue),
+		),
+		threading.Thread(
+			target=command_worker,
+			daemon=True,
+			name="command",
+			args=(stop_event, command_queue, mavlink_client),
 		),
 	]
 
@@ -101,6 +116,11 @@ def main() -> None:
 
 		try:
 			camera.stop()
+		except Exception:
+			pass
+
+		try:
+			mavlink_client.close()
 		except Exception:
 			pass
 

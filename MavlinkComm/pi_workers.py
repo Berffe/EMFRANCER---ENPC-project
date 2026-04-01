@@ -8,8 +8,9 @@ from pi_config import (
 	INFERENCE_PERIOD,
 	FRAME_RATE,
 	LOG_DIR,
+	MAVLINK_SUPPRESS_DUPLICATES,
 )
-from pi_types import FramePacket, DetectionPacket
+from pi_types import FramePacket, DetectionPacket, CommandPacket
 from pi_utils import write_jsonl
 from decision import DecisionEngine
 
@@ -56,7 +57,6 @@ def frame_pump_worker(stop_event, camera, frame_queue) -> None:
 			segment_t_sec = max(0.0, now - segment_start_ts)
 			estimated_main_frame_idx = round(segment_t_sec * FRAME_RATE)
 
-			# Convert only when we actually need a frame for inference
 			frame_bgr = cv2.cvtColor(lores_raw, cv2.COLOR_YUV2BGR_I420)
 		except Exception as e:
 			print(f"[frame] capture error: {e}")
@@ -81,6 +81,7 @@ def frame_pump_worker(stop_event, camera, frame_queue) -> None:
 
 		frame_id += 1
 		next_infer_time = now + INFERENCE_PERIOD
+
 
 def inference_worker(
 	stop_event,
@@ -112,7 +113,7 @@ def inference_worker(
 
 	try:
 		os.sched_setaffinity(0, {2, 3})
-		print("[infer] pinned to CPU cores {2, 3, 4}")
+		print("[infer] pinned to CPU cores {2, 3}")
 	except Exception as e:
 		print(f"[warning] could not set CPU affinity: {e}")
 
@@ -121,7 +122,7 @@ def inference_worker(
 		net = load_ncnn_model(str(PARAM_PATH), str(BIN_PATH), use_vulkan=False)
 	except Exception as e:
 		print(f"[infer] startup error: {e}")
-		ready_event.set()  # avoid deadlocking main on startup wait
+		ready_event.set()
 		return
 
 	ready_event.set()
@@ -173,7 +174,6 @@ def inference_worker(
 				},
 			)
 
-			# freshest-only policy
 			try:
 				while True:
 					detection_queue.get_nowait()
@@ -216,9 +216,10 @@ def inference_worker(
 		print("[infer] shutdown complete.")
 
 
-def decision_worker(stop_event, detection_queue) -> None:
+def decision_worker(stop_event, detection_queue, command_queue) -> None:
 	engine = DecisionEngine()
 	decisions_path = LOG_DIR / "decisions.jsonl"
+	commands_path = LOG_DIR / "commands.jsonl"
 
 	while not stop_event.is_set():
 		try:
@@ -230,8 +231,58 @@ def decision_worker(stop_event, detection_queue) -> None:
 
 		decision = engine.update(pkt)
 		write_jsonl(decisions_path, asdict(decision))
+
+		command = CommandPacket(
+			frame_id=decision.frame_id,
+			timestamp=decision.timestamp,
+			action=decision.action,
+			reason=decision.reason,
+			confidence=decision.confidence,
+		)
+
+		write_jsonl(commands_path, asdict(command))
+
+		try:
+			while True:
+				command_queue.get_nowait()
+		except Exception:
+			pass
+
+		try:
+			command_queue.put_nowait(command)
+		except Exception:
+			pass
+
 		print(
 			f"[decision] frame={decision.frame_id:06d} "
 			f"landing_clear={decision.landing_clear} "
+			f"action={decision.action} "
 			f"reason={decision.reason}"
 		)
+
+
+def command_worker(stop_event, command_queue, mavlink_client) -> None:
+	last_action = None
+
+	while not stop_event.is_set():
+		try:
+			pkt: CommandPacket = command_queue.get(timeout=0.1)
+		except queue.Empty:
+			continue
+		except Exception:
+			continue
+
+		if MAVLINK_SUPPRESS_DUPLICATES and pkt.action == last_action:
+			print(f"[command] suppressed duplicate action={pkt.action}")
+			continue
+
+		try:
+			mavlink_client.send_action(pkt.action)
+			last_action = pkt.action
+			print(
+				f"[command] sent action={pkt.action} "
+				f"frame={pkt.frame_id:06d} "
+				f"reason={pkt.reason}"
+			)
+		except Exception as e:
+			print(f"[command] send error: {e}")
