@@ -41,3 +41,16 @@ class CommandPacket:
 	action: str
 	reason: str
 	confidence: float
+
+
+@dataclass
+class VehicleStatePacket:
+	timestamp: float
+	link_alive: bool
+	armed: bool | None
+	mode: str | None
+	altitude_m: float | None
+	lat: float | None
+	lon: float | None
+	voltage_V: float | None
+	gps_fix: int | None

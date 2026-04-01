@@ -9,10 +9,18 @@ from pi_config import (
 	FRAME_RATE,
 	LOG_DIR,
 	MAVLINK_SUPPRESS_DUPLICATES,
+	TELEMETRY_POLL_INTERVAL,
+	LOG_DECISION,
 )
-from pi_types import FramePacket, DetectionPacket, CommandPacket
+from pi_types import (
+	FramePacket,
+	DetectionPacket,
+	CommandPacket,
+	VehicleStatePacket,
+)
 from pi_utils import write_jsonl
 from decision import DecisionEngine
+from mavlink_client import MAVLinkError
 
 
 def _try_nice(value: int) -> None:
@@ -106,8 +114,6 @@ def inference_worker(
 		DEBUG_DIR,
 	)
 	from ncnn_wrapper import load_model_meta, load_ncnn_model, infer_ncnn, draw_detections
-	from pi_types import DetectionPacket
-	from pi_utils import write_jsonl
 
 	_try_nice(10)
 
@@ -216,7 +222,47 @@ def inference_worker(
 		print("[infer] shutdown complete.")
 
 
-def decision_worker(stop_event, detection_queue, command_queue) -> None:
+def telemetry_worker(stop_event, mavlink_client, telemetry_state) -> None:
+	telemetry_path = LOG_DIR / "telemetry.jsonl"
+
+	while not stop_event.is_set():
+		now = time.time()
+
+		try:
+			state = mavlink_client.get_vehicle_state()
+			pkt = VehicleStatePacket(
+				timestamp=now,
+				link_alive=mavlink_client.is_link_alive(),
+				armed=state.get("armed"),
+				mode=state.get("mode"),
+				altitude_m=state.get("altitude_m"),
+				lat=state.get("lat"),
+				lon=state.get("lon"),
+				voltage_V=state.get("voltage_V"),
+				gps_fix=state.get("gps_fix"),
+			)
+		except Exception as e:
+			print(f"[telemetry] read error: {e}")
+			pkt = VehicleStatePacket(
+				timestamp=now,
+				link_alive=False,
+				armed=None,
+				mode=None,
+				altitude_m=None,
+				lat=None,
+				lon=None,
+				voltage_V=None,
+				gps_fix=None,
+			)
+
+		telemetry_state.update(pkt)
+		write_jsonl(telemetry_path, asdict(pkt))
+
+		if stop_event.wait(TELEMETRY_POLL_INTERVAL):
+			break
+
+
+def decision_worker(stop_event, detection_queue, command_queue, telemetry_state) -> None:
 	engine = DecisionEngine()
 	decisions_path = LOG_DIR / "decisions.jsonl"
 	commands_path = LOG_DIR / "commands.jsonl"
@@ -229,8 +275,10 @@ def decision_worker(stop_event, detection_queue, command_queue) -> None:
 		except Exception:
 			continue
 
-		decision = engine.update(pkt)
-		write_jsonl(decisions_path, asdict(decision))
+		vehicle_state = telemetry_state.get_snapshot()
+		decision = engine.update(pkt, vehicle_state=vehicle_state)
+		if LOG_DECISION:
+			write_jsonl(decisions_path, asdict(decision))
 
 		command = CommandPacket(
 			frame_id=decision.frame_id,
@@ -253,11 +301,15 @@ def decision_worker(stop_event, detection_queue, command_queue) -> None:
 		except Exception:
 			pass
 
+		mode = vehicle_state.mode if vehicle_state is not None else None
+		alt = vehicle_state.altitude_m if vehicle_state is not None else None
+
 		print(
 			f"[decision] frame={decision.frame_id:06d} "
 			f"landing_clear={decision.landing_clear} "
 			f"action={decision.action} "
-			f"reason={decision.reason}"
+			f"reason={decision.reason} "
+			f"mode={mode} alt={alt}"
 		)
 
 
@@ -284,5 +336,7 @@ def command_worker(stop_event, command_queue, mavlink_client) -> None:
 				f"frame={pkt.frame_id:06d} "
 				f"reason={pkt.reason}"
 			)
-		except Exception as e:
+		except MAVLinkError as e:
 			print(f"[command] send error: {e}")
+		except Exception as e:
+			print(f"[command] unexpected error: {e}")

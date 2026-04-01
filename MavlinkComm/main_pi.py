@@ -8,10 +8,12 @@ from pi_config import DISPLAY, MAVLINK_ENABLED, MAVLINK_CONNECTION
 from pi_utils import ensure_dirs, write_mission_meta
 from pi_camera import CameraManager
 from mavlink_client import MAVLinkClient
+from pi_telemetry import TelemetryState
 from pi_workers import (
 	segment_rotator_worker,
 	frame_pump_worker,
 	inference_worker,
+	telemetry_worker,
 	decision_worker,
 	command_worker,
 )
@@ -28,6 +30,8 @@ def main() -> None:
 	detection_queue = mp.Queue(maxsize=1)
 	command_queue = queue.Queue(maxsize=1)
 	debug_counter = mp.Value("i", 0)
+
+	telemetry_state = TelemetryState()
 
 	mavlink_client = MAVLinkClient(
 		connection_string=MAVLINK_CONNECTION,
@@ -70,10 +74,16 @@ def main() -> None:
 			args=(stop_event, camera, frame_queue),
 		),
 		threading.Thread(
+			target=telemetry_worker,
+			daemon=True,
+			name="telemetry",
+			args=(stop_event, mavlink_client, telemetry_state),
+		),
+		threading.Thread(
 			target=decision_worker,
 			daemon=True,
 			name="decision",
-			args=(stop_event, detection_queue, command_queue),
+			args=(stop_event, detection_queue, command_queue, telemetry_state),
 		),
 		threading.Thread(
 			target=command_worker,
