@@ -4,8 +4,11 @@ __pycache__/
 *$py.class
 *.pt
 venv
+*ncnn
 
 dataset
 runs
 output
+logs
+video
 yolov8n_ncnn_model

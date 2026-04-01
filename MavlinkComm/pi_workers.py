@@ -10,7 +10,7 @@ from pi_config  import (SEGMENT_SECONDS, INFERENCE_PERIOD, CONF_THRESH, IOU_THRE
 					DISPLAY, SAVE_DEBUG_FRAME_EVERY, DEBUG_DIR)
 from pi_types   import FramePacket, DetectionPacket
 from pi_utils   import latest_put, write_jsonl
-from ncnn_wrapper import load_model_meta, load_ncnn_model, infer_ncnn, draw_detections
+from GroundStation.ncnn_wrapper import load_model_meta, load_ncnn_model, infer_ncnn, draw_detections
 from pi_camera  import CameraManager
 from decision import DecisionEngine
 
