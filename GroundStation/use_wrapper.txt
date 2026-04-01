@@ -5,6 +5,7 @@ python ground_rebuild.py \
   --model-dir ./MODEL_best_ncnn \
   --output ./video/segment_0000_annotated.mp4
 
+py annotated_mission.py 01_04_2026_mission001
 
 #1 IMPORTANT -> use same lores and main aspect ratios
 #2 IMPORTANT -> adjust logging to facilitate reconstruction and readability; mission log; a log file for each video exert 

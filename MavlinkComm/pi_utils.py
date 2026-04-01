@@ -1,6 +1,7 @@
 # utils.py
 import json
 import queue
+import time
 from pathlib import Path
 from typing import Any
 import cv2
@@ -16,16 +17,33 @@ def write_jsonl(path: Path, payload: dict[str, Any]) -> None:
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(payload) + "\n")
 
-def latest_put(q: queue.Queue, item: Any) -> None:
-    """Drop stale item if queue is full, then insert the new one."""
-    try:
-        q.put_nowait(item)
-    except queue.Full:
-        try:
-            q.get_nowait()
-        except queue.Empty:
-            pass
-        q.put_nowait(item)
+def latest_put(q, item: Any, retries: int = 3, delay: float = 0.001) -> None:
+	"""
+	Best-effort 'keep only the latest item' queue push.
+
+	Works with both queue.Queue and multiprocessing.Queue.
+	If the queue remains full after a few retries, the new item is dropped
+	instead of crashing the caller.
+	"""
+	for _ in range(retries):
+		try:
+			q.put_nowait(item)
+			return
+		except queue.Full:
+			try:
+				q.get_nowait()
+			except (queue.Empty, Exception):
+				pass
+			time.sleep(delay)
+		except Exception:
+			# On weird queue state transitions, just give up quietly
+			return
+
+	# Final best-effort attempt; if still full, drop silently
+	try:
+		q.put_nowait(item)
+	except Exception:
+		pass
 
 def draw_detections(
     frame_bgr: np.ndarray,

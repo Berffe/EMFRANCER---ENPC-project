@@ -7,6 +7,9 @@ venv
 *ncnn
 
 dataset
+debug
+*mission001
+annotated
 runs
 output
 logs

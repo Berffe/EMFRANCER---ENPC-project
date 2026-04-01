@@ -128,7 +128,6 @@ def decode_yolo_ncnn_output(
 	if raw.ndim == 1:
 		raw = np.expand_dims(raw, axis=0)
 
-	# Some exports come transposed, e.g. [84, 8400] instead of [8400, 84]
 	if raw.ndim == 2:
 		rows, cols = raw.shape
 		if rows in (4 + num_classes, 5 + num_classes) and cols > rows:
@@ -140,18 +139,26 @@ def decode_yolo_ncnn_output(
 		if row.ndim != 1:
 			continue
 
-		# Case A: [cx, cy, w, h, class1, class2, ...]
-		if len(row) == 4 + num_classes:
+		row_len = len(row)
+
+		if row_len == 4 + num_classes:
 			cx, cy, w, h = row[:4]
 			class_scores = row[4:]
+
+			if len(class_scores) == 0:
+				continue
+
 			cls = int(np.argmax(class_scores))
 			score = float(class_scores[cls])
 
-		# Case B: [cx, cy, w, h, obj_conf, class1, class2, ...]
-		elif len(row) == 5 + num_classes:
+		elif row_len == 5 + num_classes:
 			cx, cy, w, h = row[:4]
 			obj_conf = float(row[4])
 			class_scores = row[5:]
+
+			if len(class_scores) == 0:
+				continue
+
 			cls = int(np.argmax(class_scores))
 			score = float(obj_conf * class_scores[cls])
 
@@ -166,13 +173,11 @@ def decode_yolo_ncnn_output(
 		x2 = cx + w / 2
 		y2 = cy + h / 2
 
-		# Undo letterbox
 		x1 = (x1 - pad_left) / scale
 		y1 = (y1 - pad_top) / scale
 		x2 = (x2 - pad_left) / scale
 		y2 = (y2 - pad_top) / scale
 
-		# Clip to original frame
 		x1 = max(0.0, min(orig_w - 1.0, x1))
 		y1 = max(0.0, min(orig_h - 1.0, y1))
 		x2 = max(0.0, min(orig_w - 1.0, x2))
