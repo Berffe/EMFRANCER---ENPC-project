@@ -328,6 +328,9 @@ def command_worker(stop_event, command_queue, mavlink_client) -> None:
 		if MAVLINK_SUPPRESS_DUPLICATES and pkt.action == last_action:
 			print(f"[command] suppressed duplicate action={pkt.action}")
 			continue
+		
+		if pkt.action == "NONE":
+			continue	
 
 		try:
 			mavlink_client.send_action(pkt.action)

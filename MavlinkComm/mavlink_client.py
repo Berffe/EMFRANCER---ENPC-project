@@ -148,15 +148,13 @@ class MAVLinkClient:
 			"gps_fix": None,
 		}
 
-		# mavlink_client.py — replace the blocking reads in get_vehicle_state()
-
 		with self._io_lock:
-			# Drain the receive buffer non-blocking, categorising each message
-			deadline = time.time() + 0.2   # 200ms max, not 8s
+			deadline = time.time() + 0.2
 			while time.time() < deadline:
 				msg = master.recv_match(blocking=False)
 				if msg is None:
 					break
+
 				mtype = msg.get_type()
 				if mtype == "HEARTBEAT":
 					self._last_heartbeat_time = time.time()
@@ -165,14 +163,15 @@ class MAVLinkClient:
 					)
 					state["mode"] = mavutil.mode_string_v10(msg)
 				elif mtype == "GLOBAL_POSITION_INT":
-					state["lat"]        = msg.lat / 1e7
-					state["lon"]        = msg.lon / 1e7
+					state["lat"] = msg.lat / 1e7
+					state["lon"] = msg.lon / 1e7
 					state["altitude_m"] = msg.relative_alt / 1000.0
 				elif mtype == "SYS_STATUS":
-					state["voltage_V"]  = msg.voltage_battery / 1000.0
+					state["voltage_V"] = msg.voltage_battery / 1000.0
 				elif mtype == "GPS_RAW_INT":
-					state["gps_fix"]    = msg.fix_type
+					state["gps_fix"] = msg.fix_type
 
+		return state
 
 	def get_current_mode(self) -> Optional[str]:
 		return self.get_vehicle_state().get("mode")
@@ -192,6 +191,18 @@ class MAVLinkClient:
 	# ─────────────────────────────────────────
 	# ACTIONS
 	# ─────────────────────────────────────────
+	def send_go_around(self) -> None:
+		master = self._require_master()
+		if master is None:
+			print("[mavlink] GO_AROUND skipped (disabled).")
+			return
+		master.mav.command_long_send(
+			master.target_system,
+			master.target_component,
+			mavutil.mavlink.MAV_CMD_DO_GO_AROUND,
+			0, 0, 0, 0, 0, 0, 0, 0
+		)
+		print("[mavlink] GO_AROUND sent.")
 
 	def send_land(self) -> None:
 		self._send_mode_verified("LAND")
@@ -205,6 +216,9 @@ class MAVLinkClient:
 			self.send_land()
 		elif action == "CIRCLE":
 			self.send_circle()
+		# Added later
+		elif action == "GO_AROUND":
+			self.send_go_around()
 		else:
 			raise ValueError(f"Unsupported MAVLink action: {action}")
 
