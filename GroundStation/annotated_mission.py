@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -30,6 +29,29 @@ class DetectionSample:
 	estimated_main_frame_idx: int
 	inference_ms: float
 	detections: list[dict[str, Any]]
+
+
+@dataclass
+class TelemetrySample:
+	timestamp: float
+	altitude_m: float | None
+	mode: str | None
+	link_alive: bool | None
+
+
+# ----------------------------
+# Mirrored zone parameters from decision.py
+# ----------------------------
+
+REF_ALTITUDE_M = 10.0
+
+ZONE2_REF = dict(cx=0.50, cy=0.58, top_w=0.18, bot_w=0.28, h=0.28)
+ZONE1_REF = dict(cx=0.50, cy=0.58, top_w=0.34, bot_w=0.50, h=0.46)
+
+ALT_SCALE_MIN = 0.25
+ALT_SCALE_MAX = 2.50
+
+ZONE_DRAW_ALPHA = 0.18
 
 
 # ----------------------------
@@ -94,6 +116,27 @@ def load_detection_samples(path: Path) -> list[DetectionSample]:
 	return samples
 
 
+def load_telemetry_samples(path: Path) -> list[TelemetrySample]:
+	samples: list[TelemetrySample] = []
+
+	if not path.exists():
+		return samples
+
+	for row in iter_jsonl(path):
+		altitude = row.get("altitude_m")
+		samples.append(
+			TelemetrySample(
+				timestamp=float(row["timestamp"]),
+				altitude_m=float(altitude) if altitude is not None else None,
+				mode=row.get("mode"),
+				link_alive=row.get("link_alive"),
+			)
+		)
+
+	samples.sort(key=lambda s: s.timestamp)
+	return samples
+
+
 # ----------------------------
 # Video path resolution
 # ----------------------------
@@ -141,10 +184,6 @@ def map_bbox_stretch(
 	lores_size: tuple[int, int],
 	main_size: tuple[int, int],
 ) -> tuple[float, float, float, float]:
-	"""
-	Simple independent x/y scaling.
-	Best when lores and main have the same aspect ratio.
-	"""
 	lx, ly = lores_size
 	mx, my = main_size
 
@@ -160,10 +199,6 @@ def map_bbox_letterbox(
 	lores_size: tuple[int, int],
 	main_size: tuple[int, int],
 ) -> tuple[float, float, float, float]:
-	"""
-	Assumes main was resized into lores with aspect-ratio preservation + padding.
-	Inverse that transform.
-	"""
 	lw, lh = lores_size
 	mw, mh = main_size
 
@@ -188,10 +223,6 @@ def map_bbox_center_crop(
 	lores_size: tuple[int, int],
 	main_size: tuple[int, int],
 ) -> tuple[float, float, float, float]:
-	"""
-	Assumes lores is a center crop of main after uniform scaling.
-	This is often a better approximation than stretch when aspect ratios differ.
-	"""
 	lw, lh = lores_size
 	mw, mh = main_size
 
@@ -232,8 +263,73 @@ def resolve_bbox_mapper(
 	if abs(lores_ar - main_ar) < 1e-6:
 		return map_bbox_stretch
 
-	# When aspect ratios differ, center_crop is often the least bad default.
 	return map_bbox_center_crop
+
+
+# ----------------------------
+# Zone geometry mirroring decision.py
+# ----------------------------
+
+def _scale_zone(ref: dict[str, float], alt_m: float) -> dict[str, float]:
+	raw_scale = REF_ALTITUDE_M / max(alt_m, 0.5)
+	scale = max(ALT_SCALE_MIN, min(ALT_SCALE_MAX, raw_scale))
+	return {
+		"cx": ref["cx"],
+		"cy": ref["cy"],
+		"top_w": min(0.95, ref["top_w"] * scale),
+		"bot_w": min(0.95, ref["bot_w"] * scale),
+		"h": min(0.90, ref["h"] * scale),
+	}
+
+
+def _trapezoid_vertices(spec: dict[str, float]) -> list[tuple[float, float]]:
+	cx, cy = spec["cx"], spec["cy"]
+	top_w = spec["top_w"]
+	bot_w = spec["bot_w"]
+	h = spec["h"]
+	half_h = h / 2.0
+	return [
+		(cx - top_w / 2, cy - half_h),
+		(cx + top_w / 2, cy - half_h),
+		(cx + bot_w / 2, cy + half_h),
+		(cx - bot_w / 2, cy + half_h),
+	]
+
+
+def zone_vertices_lores(alt_m: float, lores_size: tuple[int, int]) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+	lw, lh = lores_size
+
+	z1 = _trapezoid_vertices(_scale_zone(ZONE1_REF, alt_m))
+	z2 = _trapezoid_vertices(_scale_zone(ZONE2_REF, alt_m))
+
+	z1_px = [(x * lw, y * lh) for x, y in z1]
+	z2_px = [(x * lw, y * lh) for x, y in z2]
+	return z1_px, z2_px
+
+
+def map_point(
+	x: float,
+	y: float,
+	lores_size: tuple[int, int],
+	main_size: tuple[int, int],
+	bbox_map_mode: str,
+) -> tuple[float, float]:
+	mapper = resolve_bbox_mapper(bbox_map_mode, lores_size, main_size)
+	x1, y1, _, _ = mapper([x, y, x, y], lores_size, main_size)
+	return x1, y1
+
+
+def map_polygon(
+	pts: list[tuple[float, float]],
+	lores_size: tuple[int, int],
+	main_size: tuple[int, int],
+	bbox_map_mode: str,
+) -> list[tuple[int, int]]:
+	mapped = []
+	for x, y in pts:
+		mx, my = map_point(x, y, lores_size, main_size, bbox_map_mode)
+		mapped.append((int(round(mx)), int(round(my))))
+	return mapped
 
 
 # ----------------------------
@@ -306,10 +402,45 @@ def draw_detections_on_main(
 	return out
 
 
+def draw_zones_on_main(
+	frame,
+	alt_m: float | None,
+	lores_size: tuple[int, int],
+	main_size: tuple[int, int],
+	bbox_map_mode: str,
+) -> Any:
+	if alt_m is None:
+		return frame
+
+	z1_lores, z2_lores = zone_vertices_lores(alt_m, lores_size)
+	z1_main = map_polygon(z1_lores, lores_size, main_size, bbox_map_mode)
+	z2_main = map_polygon(z2_lores, lores_size, main_size, bbox_map_mode)
+
+	out = frame.copy()
+	overlay = frame.copy()
+
+	cv2.fillPoly(overlay, [cv2.UMat(cv2.array(z1_main)) if False else __import__("numpy").array(z1_main, dtype="int32")], (0, 255, 255))
+	cv2.fillPoly(overlay, [__import__("numpy").array(z2_main, dtype="int32")], (0, 0, 255))
+	cv2.addWeighted(overlay, ZONE_DRAW_ALPHA, out, 1.0 - ZONE_DRAW_ALPHA, 0, out)
+
+	cv2.polylines(out, [__import__("numpy").array(z1_main, dtype="int32")], True, (0, 215, 255), 2)
+	cv2.polylines(out, [__import__("numpy").array(z2_main, dtype="int32")], True, (0, 0, 255), 2)
+
+	if z1_main:
+		x1, y1 = z1_main[0]
+		cv2.putText(out, "Zone 1", (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 215, 255), 2, cv2.LINE_AA)
+	if z2_main:
+		x2, y2 = z2_main[0]
+		cv2.putText(out, "Zone 2", (x2, max(20, y2 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+
+	return out
+
+
 def draw_overlay_info(
 	frame,
 	frame_idx: int,
 	sample: DetectionSample | None,
+	telemetry: TelemetrySample | None,
 ) -> None:
 	lines = [f"frame={frame_idx:06d}"]
 
@@ -317,6 +448,12 @@ def draw_overlay_info(
 		lines.append(f"sample_id={sample.sample_id}")
 		lines.append(f"segment_t={sample.segment_t_sec:.3f}s")
 		lines.append(f"infer_ms={sample.inference_ms:.1f}")
+
+	if telemetry is not None:
+		if telemetry.altitude_m is not None:
+			lines.append(f"alt={telemetry.altitude_m:.2f}m")
+		if telemetry.mode is not None:
+			lines.append(f"mode={telemetry.mode}")
 
 	y = 24
 	for line in lines:
@@ -351,7 +488,6 @@ def make_video_writer(
 ) -> cv2.VideoWriter:
 	output_path.parent.mkdir(parents=True, exist_ok=True)
 
-	# mp4v is broadly available in OpenCV builds
 	fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 	writer = cv2.VideoWriter(str(output_path), fourcc, fps, frame_size)
 	if not writer.isOpened():
@@ -359,53 +495,16 @@ def make_video_writer(
 	return writer
 
 
-def build_sample_lookup(
-	samples: list[DetectionSample],
-	total_frames: int,
-	max_frame_gap: int = 0,
-) -> dict[int, DetectionSample]:
-	"""
-	Maps exact target frames to detection samples.
-
-	max_frame_gap=0:
-		only draw on the estimated frame itself
-
-	max_frame_gap>0:
-		also draw the same detections on a small neighborhood around the target frame
-	"""
-	lookup: dict[int, DetectionSample] = {}
-
-	for sample in samples:
-		center = sample.estimated_main_frame_idx
-
-		for fidx in range(center - max_frame_gap, center + max_frame_gap + 1):
-			if 0 <= fidx < total_frames:
-				current = lookup.get(fidx)
-				if current is None:
-					lookup[fidx] = sample
-					continue
-
-				# Prefer the sample whose estimated frame is closest.
-				prev_dist = abs(current.estimated_main_frame_idx - fidx)
-				new_dist = abs(sample.estimated_main_frame_idx - fidx)
-
-				if new_dist < prev_dist:
-					lookup[fidx] = sample
-				elif new_dist == prev_dist and sample.sample_id > current.sample_id:
-					lookup[fidx] = sample
-
-	return lookup
-
-
 def reconstruct_segment(
 	video_path: Path,
 	detections_path: Path,
+	telemetry_samples: list[TelemetrySample],
 	mission_meta: MissionMeta,
 	output_path: Path,
 	class_names: dict[int, str],
 	bbox_map_mode: str,
-	max_frame_gap: int,
 	show_overlay_info: bool,
+	draw_zones: bool,
 ) -> None:
 	samples = load_detection_samples(detections_path)
 	cap = open_video_capture(video_path)
@@ -421,17 +520,39 @@ def reconstruct_segment(
 		try:
 			frame_idx = 0
 			sample_idx = 0
+			telemetry_idx = 0
 			active_sample: DetectionSample | None = None
+			active_telemetry: TelemetrySample | None = None
 
 			while True:
 				ok, frame = cap.read()
 				if not ok:
 					break
 
-				# Advance to the latest sample whose estimated frame is <= current frame.
+				frame_time = frame_idx / fps if fps > 0 else 0.0
+
 				while sample_idx < len(samples) and samples[sample_idx].estimated_main_frame_idx <= frame_idx:
 					active_sample = samples[sample_idx]
 					sample_idx += 1
+
+				if active_sample is not None:
+					current_abs_time = active_sample.capture_ts_unix + max(0.0, frame_time - active_sample.segment_t_sec)
+				else:
+					current_abs_time = None
+
+				if current_abs_time is not None:
+					while telemetry_idx < len(telemetry_samples) and telemetry_samples[telemetry_idx].timestamp <= current_abs_time:
+						active_telemetry = telemetry_samples[telemetry_idx]
+						telemetry_idx += 1
+
+				if draw_zones and active_telemetry is not None:
+					frame = draw_zones_on_main(
+						frame=frame,
+						alt_m=active_telemetry.altitude_m,
+						lores_size=mission_meta.lores_size,
+						main_size=(width, height),
+						bbox_map_mode=bbox_map_mode,
+					)
 
 				if active_sample is not None and active_sample.detections:
 					frame = draw_detections_on_main(
@@ -444,7 +565,7 @@ def reconstruct_segment(
 					)
 
 				if show_overlay_info:
-					draw_overlay_info(frame, frame_idx, active_sample)
+					draw_overlay_info(frame, frame_idx, active_sample, active_telemetry)
 
 				writer.write(frame)
 				frame_idx += 1
@@ -475,18 +596,21 @@ def reconstruct_mission(
 	output_dir: Path | None,
 	class_names_path: Path | None,
 	bbox_map_mode: str,
-	max_frame_gap: int,
 	show_overlay_info: bool,
+	draw_zones: bool,
 ) -> None:
 	log_dir = mission_root / "logs"
 	video_dir = mission_root / "video"
 
 	mission_meta_path = log_dir / "mission_meta.json"
+	telemetry_path = log_dir / "telemetry.jsonl"
+
 	if not mission_meta_path.exists():
 		raise FileNotFoundError(f"Missing mission meta: {mission_meta_path}")
 
 	mission_meta = load_mission_meta(mission_meta_path)
 	class_names = get_class_names(class_names_path)
+	telemetry_samples = load_telemetry_samples(telemetry_path)
 
 	detections_logs = iter_detection_logs(log_dir)
 	if not detections_logs:
@@ -501,6 +625,7 @@ def reconstruct_mission(
 	print(f"[mission] output_dir={output_dir}")
 	print(f"[mission] bbox_map_mode={bbox_map_mode}")
 	print(f"[mission] logs_found={len(detections_logs)}")
+	print(f"[mission] telemetry_samples={len(telemetry_samples)}")
 
 	for det_path in detections_logs:
 		segment_stem = extract_segment_stem(det_path)
@@ -514,12 +639,13 @@ def reconstruct_mission(
 		reconstruct_segment(
 			video_path=video_path,
 			detections_path=det_path,
+			telemetry_samples=telemetry_samples,
 			mission_meta=mission_meta,
 			output_path=output_path,
 			class_names=class_names,
 			bbox_map_mode=bbox_map_mode,
-			max_frame_gap=max_frame_gap,
 			show_overlay_info=show_overlay_info,
+			draw_zones=draw_zones,
 		)
 
 	print("[mission] reconstruction complete.")
@@ -531,7 +657,7 @@ def reconstruct_mission(
 
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(
-		description="Reconstruct annotated mission videos from segmented detection logs."
+		description="Reconstruct annotated mission videos from segmented detection and telemetry logs."
 	)
 
 	parser.add_argument(
@@ -556,24 +682,20 @@ def parse_args() -> argparse.Namespace:
 		choices=["auto", "stretch", "letterbox", "center_crop"],
 		default="auto",
 		help=(
-			"How to map lores detections into main video coordinates. "
+			"How to map lores detections/zones into main video coordinates. "
 			"Use 'stretch' when lores and main have the same aspect ratio. "
 			"Use 'center_crop' or 'letterbox' if they differ."
-		),
-	)
-	parser.add_argument(
-		"--max-frame-gap",
-		type=int,
-		default=0,
-		help=(
-			"How many neighboring frames around estimated_main_frame_idx should also receive the same detections. "
-			"0 means annotate only the exact estimated frame."
 		),
 	)
 	parser.add_argument(
 		"--no-overlay-info",
 		action="store_true",
 		help="Do not draw frame/sample timing info text.",
+	)
+	parser.add_argument(
+		"--no-zones",
+		action="store_true",
+		help="Do not draw Zone 1 / Zone 2 overlays.",
 	)
 
 	return parser.parse_args()
@@ -587,8 +709,8 @@ def main() -> None:
 		output_dir=args.output_dir,
 		class_names_path=args.class_names_json,
 		bbox_map_mode=args.bbox_map_mode,
-		max_frame_gap=args.max_frame_gap,
 		show_overlay_info=not args.no_overlay_info,
+		draw_zones=not args.no_zones,
 	)
 
 
