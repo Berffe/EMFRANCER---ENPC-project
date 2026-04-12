@@ -6,7 +6,7 @@ import ncnn
 import numpy as np
 import json
 from pathlib import Path
-
+from pi_config import INF_THREADS
 
 @dataclass
 class ModelMeta:
@@ -36,7 +36,7 @@ def load_model_meta(yaml_path: str) -> ModelMeta:
 def load_ncnn_model(param_path: str, bin_path: str, use_vulkan: bool = False) -> ncnn.Net:
 	net = ncnn.Net()
 	net.opt.use_vulkan_compute = use_vulkan  # False on Pi 4
-	net.opt.num_threads = 2 
+	net.opt.num_threads = INF_THREADS
 	net.load_param(str(param_path))
 	net.load_model(str(bin_path))
 	return net
@@ -233,7 +233,7 @@ def infer_ncnn(
 		print(f"Failed to extract output '{output_name}', code={ret}")
 		return []
 
-	raw = np.array(out)
+	raw = np.asarray(out)
 
 	detections = decode_yolo_ncnn_output(
 		raw=raw,

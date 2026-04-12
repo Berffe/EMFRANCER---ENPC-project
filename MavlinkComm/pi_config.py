@@ -28,7 +28,7 @@ LOG_DECISION = True 				# Optional right now
 
 
 MAIN_SIZE        = (1920, 1080)
-LORES_SIZE       = (512, 288)
+LORES_SIZE       = (512, 288) ## Try (320, 192)
 FRAME_RATE       = 30
 SEGMENT_SECONDS  = 120
 INFERENCE_PERIOD = 0.5
@@ -39,6 +39,7 @@ SAVE_DEBUG_FRAME_EVERY = 0
 CONTAINER_EXT    = "h264"
 VIDEO_BITRATE    = 8_000_000
 BUFFER_COUNT = 8
+INF_THREADS = 2
 
 
 # ─────────────────────────────────────────────────────────────

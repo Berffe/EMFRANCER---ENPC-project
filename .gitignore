@@ -8,10 +8,11 @@ venv
 
 dataset
 debug
-*mission001
+mission_*
 annotated
 runs
 output
 logs
 video
 yolov8n_ncnn_model
+best_ncnn_model
