@@ -47,7 +47,7 @@ INF_THREADS = 2
 # ─────────────────────────────────────────────────────────────
 
 MAVLINK_ENABLED = False
-MAVLINK_CONNECTION = "serial:/dev/ttyAMA0:57600"
+MAVLINK_CONNECTION = "/dev/ttyAMA0,57600"
 MAVLINK_SUPPRESS_DUPLICATES = True
 
 CONNECT_RETRIES = 5

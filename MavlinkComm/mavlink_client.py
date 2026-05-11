@@ -345,5 +345,5 @@ def run_diagnostics(connection_string: str) -> None:
 if __name__ == "__main__":
 	import sys
 
-	conn = sys.argv[1] if len(sys.argv) > 1 else "serial:/dev/serial0:57600"
+	conn = sys.argv[1] if len(sys.argv) > 1 else "/dev/serial0,57600"
 	run_diagnostics(conn)
