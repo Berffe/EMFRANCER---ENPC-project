@@ -1,0 +1,96 @@
+' CATIA V5 - CATScript
+' Duplique des points en "Datum" dans un nouveau Geometrical Set
+
+Sub CATMain()
+
+    Dim srcPath
+    srcPath = "Export\Points_Attaque"      ' <-- source
+
+    Dim dstName
+    dstName = "Points_Attaque_Datum"      ' <-- destination set name (created under root)
+
+    Dim partDoc
+    Set partDoc = CATIA.ActiveDocument
+
+    Dim part
+    Set part = partDoc.Part
+
+    Dim hsf
+    Set hsf = part.HybridShapeFactory
+
+    ' --- Find source geometrical set
+    Dim srcSet
+    Set srcSet = FindHybridBodyByPath(part.HybridBodies, srcPath)
+
+    Dim srcShapes
+    Set srcShapes = srcSet.HybridShapes
+
+    ' --- Create destination geometrical set at root
+    Dim dstSet
+    Set dstSet = part.HybridBodies.Add
+    dstSet.Name = dstName
+
+    Dim i
+    For i = 1 To srcShapes.Count
+
+        Dim obj
+        Set obj = srcShapes.Item(i)
+
+        If InStr(1, TypeName(obj), "Point", vbTextCompare) > 0 Then
+
+            ' Create datum point from reference to the original point
+            Dim refP
+            Set refP = part.CreateReferenceFromObject(obj)
+
+            Dim pDat
+            Set pDat = hsf.AddNewPointDatum(refP)
+
+            dstSet.AppendHybridShape pDat
+
+            part.UpdateObject pDat
+
+        End If
+
+    Next
+
+    part.Update
+
+    MsgBox "OK: points 'Datum' created in geometrical set '" & dstName & "'.", vbInformation
+
+End Sub
+
+
+' ===== Helpers =====
+Function FindHybridBodyByPath(hybridBodies, path)
+    Dim parts
+    parts = Split(path, "\")
+
+    Dim current
+    Set current = FindChildHybridBodyByName(hybridBodies, parts(0))
+    If current Is Nothing Then
+        Set FindHybridBodyByPath = Nothing
+        Exit Function
+    End If
+
+    Dim i
+    For i = 1 To UBound(parts)
+        Set current = FindChildHybridBodyByName(current.HybridBodies, parts(i))
+        If current Is Nothing Then
+            Set FindHybridBodyByPath = Nothing
+            Exit Function
+        End If
+    Next
+
+    Set FindHybridBodyByPath = current
+End Function
+
+Function FindChildHybridBodyByName(hybridBodies, name)
+    Dim i
+    For i = 1 To hybridBodies.Count
+        If hybridBodies.Item(i).Name = name Then
+            Set FindChildHybridBodyByName = hybridBodies.Item(i)
+            Exit Function
+        End If
+    Next
+    Set FindChildHybridBodyByName = Nothing
+End Function

@@ -1,0 +1,119 @@
+' CATIA V5 - CATScript
+' Export points to CSV using Knowledgeware: Point.coord(1..3)
+
+Sub CATMain()
+
+    Dim geoSetPath
+    geoSetPath = "Points_Attaque_Datum"   ' <-- adjust if needed
+
+    Dim csvPath
+    csvPath = "U:\PROJET\Aile_Gilles_Long\attaque_datum_long.csv"
+
+    Dim partDoc
+    Set partDoc = CATIA.ActiveDocument
+
+    Dim part
+    Set part = partDoc.Part
+
+    Dim geoSet
+    Set geoSet = FindHybridBodyByPath(part.HybridBodies, geoSetPath)
+
+    Dim hs
+    Set hs = geoSet.HybridShapes
+
+    Dim params
+    Set params = part.Parameters
+
+    Dim rels
+    Set rels = part.Relations
+
+    Dim fso, f
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set f = fso.CreateTextFile(csvPath, True)
+
+    f.WriteLine "X;Y;Z"
+
+    Dim i
+    For i = 1 To hs.Count
+
+        Dim obj
+        Set obj = hs.Item(i)
+
+        If InStr(1, TypeName(obj), "Point", vbTextCompare) > 0 Then
+
+            Dim pPath
+            pPath = geoSetPath & "\" & obj.Name
+
+            Dim nx, ny, nz, fx, fy, fz
+            nx = "__tmpX__" & CStr(i)
+            ny = "__tmpY__" & CStr(i)
+            nz = "__tmpZ__" & CStr(i)
+            fx = "__fx__" & CStr(i)
+            fy = "__fy__" & CStr(i)
+            fz = "__fz__" & CStr(i)
+
+            ' Create 3 parameters (Real)
+            Dim pX, pY, pZ
+            Set pX = params.CreateReal(nx, 0)
+            Set pY = params.CreateReal(ny, 0)
+            Set pZ = params.CreateReal(nz, 0)
+
+            ' Attach formulas using .coord(n)
+            Call rels.CreateFormula(fx, "", pX, pPath & ".coord(1)")
+            Call rels.CreateFormula(fy, "", pY, pPath & ".coord(2)")
+            Call rels.CreateFormula(fz, "", pZ, pPath & ".coord(3)")
+
+            part.Update
+
+            f.WriteLine Dot(CStr(pX.Value)) & ";" & Dot(CStr(pY.Value)) & ";" & Dot(CStr(pZ.Value))
+
+            ' Cleanup
+            On Error Resume Next
+            rels.Remove rels.Item(fx)
+            rels.Remove rels.Item(fy)
+            rels.Remove rels.Item(fz)
+            params.Remove params.Item(nx)
+            params.Remove params.Item(ny)
+            params.Remove params.Item(nz)
+            Err.Clear
+            On Error GoTo 0
+
+        End If
+    Next
+
+    f.Close
+    MsgBox "Export terminé : " & csvPath, vbInformation
+
+End Sub
+
+
+' ===== Helpers =====
+Function FindHybridBodyByPath(hybridBodies, path)
+    Dim parts
+    parts = Split(path, "\")
+
+    Dim current
+    Set current = FindChildHybridBodyByName(hybridBodies, parts(0))
+
+    Dim i
+    For i = 1 To UBound(parts)
+        Set current = FindChildHybridBodyByName(current.HybridBodies, parts(i))
+    Next
+
+    Set FindHybridBodyByPath = current
+End Function
+
+Function FindChildHybridBodyByName(hybridBodies, name)
+    Dim i
+    For i = 1 To hybridBodies.Count
+        If hybridBodies.Item(i).Name = name Then
+            Set FindChildHybridBodyByName = hybridBodies.Item(i)
+            Exit Function
+        End If
+    Next
+    Set FindChildHybridBodyByName = Nothing
+End Function
+
+Function Dot(s)
+    Dot = Replace(s, ",", ".")
+End Function
