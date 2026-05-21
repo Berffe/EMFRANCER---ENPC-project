@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 import cv2
 import numpy as np
+import math
+import os
 from pi_config import (
 	VIDEO_DIR,
 	LOG_DIR,
@@ -20,12 +22,54 @@ def ensure_dirs() -> None:
 	LOG_DIR.mkdir(parents=True, exist_ok=True)
 	DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-	with open(path, "w", encoding="utf-8") as f:
-		json.dump(payload, f, indent=2)
+def _sanitize_for_json(obj: Any) -> Any:
+	"""
+	Recursively convert non-JSON-safe values to safe equivalents.
+
+	- NaN, +inf, -inf -> None
+	- numpy floats/ints -> Python floats/ints
+	- dict/list/tuple handled recursively
+	"""
+	if obj is None or isinstance(obj, (str, bool, int)):
+		return obj
+
+	if isinstance(obj, float):
+		return obj if math.isfinite(obj) else None
+
+	if isinstance(obj, np.floating):
+		value = float(obj)
+		return value if math.isfinite(value) else None
+
+	if isinstance(obj, np.integer):
+		return int(obj)
+
+	if isinstance(obj, dict):
+		return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
+
+	if isinstance(obj, (list, tuple)):
+		return [_sanitize_for_json(v) for v in obj]
+
+	return obj
+
+
+def write_jsonl(path: Path, payload: dict[str, Any], fsync: bool = False) -> None:
+	safe_payload = _sanitize_for_json(payload)
+
+	line = json.dumps(
+		safe_payload,
+		allow_nan=False,
+		separators=(",", ":"),
+	) + "\n"
+
+	with open(path, "a", encoding="utf-8") as f:
+		f.write(line)
+		f.flush()
+
+		if fsync:
+			os.fsync(f.fileno())
 
 def write_mission_meta() -> None:
-	write_json(
+	write_jsonl(
 		LOG_DIR / "mission_meta.json",
 		{
 			"main_size": list(MAIN_SIZE),

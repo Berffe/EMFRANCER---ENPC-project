@@ -8,6 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
+import math
 
 import cv2
 import os
@@ -94,12 +95,26 @@ def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:
 	with open(path, "r", encoding="utf-8") as f:
 		for line_no, line in enumerate(f, start=1):
 			line = line.strip()
+
 			if not line:
 				continue
+
 			try:
-				yield json.loads(line)
-			except json.JSONDecodeError as e:
-				raise ValueError(f"Invalid JSONL in {path} at line {line_no}: {e}") from e
+				row = json.loads(
+					line,
+					parse_constant=lambda x: (_ for _ in ()).throw(
+						ValueError(f"Invalid JSON constant: {x}")
+					),
+				)
+			except (json.JSONDecodeError, ValueError) as e:
+				print(f"[warning] skipping invalid JSONL line {line_no} in {path.name}: {e}")
+				continue
+
+			if not isinstance(row, dict):
+				print(f"[warning] skipping non-object JSONL line {line_no} in {path.name}")
+				continue
+
+			yield row
 
 
 def load_mission_meta(path: Path) -> MissionMeta:
@@ -124,20 +139,40 @@ def load_mission_meta(path: Path) -> MissionMeta:
 	)
 
 
+def _finite_float(value: Any, field_name: str) -> float:
+	value = float(value)
+
+	if not math.isfinite(value):
+		raise ValueError(f"{field_name} is not finite: {value}")
+
+	return value
+
+
+def _finite_int(value: Any, field_name: str) -> int:
+	value_float = _finite_float(value, field_name)
+	return int(value_float)
+
 def load_detection_samples(path: Path) -> list[DetectionSample]:
 	samples: list[DetectionSample] = []
 
-	for row in iter_jsonl(path):
-		samples.append(
-			DetectionSample(
-				sample_id=int(row["sample_id"]),
-				capture_ts_unix=float(row["capture_ts_unix"]),
-				segment_t_sec=float(row["segment_t_sec"]),
-				estimated_main_frame_idx=int(row["estimated_main_frame_idx"]),
-				inference_ms=float(row["inference_ms"]),
+	for row_no, row in enumerate(iter_jsonl(path), start=1):
+		try:
+			sample = DetectionSample(
+				sample_id=_finite_int(row["sample_id"], "sample_id"),
+				capture_ts_unix=_finite_float(row["capture_ts_unix"], "capture_ts_unix"),
+				segment_t_sec=_finite_float(row["segment_t_sec"], "segment_t_sec"),
+				estimated_main_frame_idx=_finite_int(
+					row["estimated_main_frame_idx"],
+					"estimated_main_frame_idx",
+				),
+				inference_ms=_finite_float(row["inference_ms"], "inference_ms"),
 				detections=list(row.get("detections", [])),
 			)
-		)
+		except (KeyError, TypeError, ValueError) as e:
+			print(f"[warning] skipping bad detection row {row_no} in {path.name}: {e}")
+			continue
+
+		samples.append(sample)
 
 	samples.sort(key=lambda s: (s.estimated_main_frame_idx, s.segment_t_sec, s.sample_id))
 	return samples
@@ -149,20 +184,28 @@ def load_telemetry_samples(path: Path) -> list[TelemetrySample]:
 	if not path.exists():
 		return samples
 
-	for row in iter_jsonl(path):
-		altitude = row.get("altitude_m")
-		samples.append(
-			TelemetrySample(
-				timestamp=float(row["timestamp"]),
-				altitude_m=float(altitude) if altitude is not None else None,
+	for row_no, row in enumerate(iter_jsonl(path), start=1):
+		try:
+			altitude = row.get("altitude_m")
+
+			sample = TelemetrySample(
+				timestamp=_finite_float(row["timestamp"], "timestamp"),
+				altitude_m=(
+					_finite_float(altitude, "altitude_m")
+					if altitude is not None
+					else None
+				),
 				mode=row.get("mode"),
 				link_alive=row.get("link_alive"),
 			)
-		)
+		except (KeyError, TypeError, ValueError) as e:
+			print(f"[warning] skipping bad telemetry row {row_no} in {path.name}: {e}")
+			continue
+
+		samples.append(sample)
 
 	samples.sort(key=lambda s: s.timestamp)
 	return samples
-
 
 # ----------------------------
 # Video path resolution

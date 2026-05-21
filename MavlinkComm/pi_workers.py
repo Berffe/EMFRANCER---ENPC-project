@@ -258,7 +258,7 @@ def telemetry_worker(stop_event, mavlink_client, telemetry_state) -> None:
 			)
 
 		telemetry_state.update(pkt)
-		write_jsonl(telemetry_path, asdict(pkt))
+		write_jsonl(telemetry_path, asdict(pkt), fsync=True)
 
 		if stop_event.wait(TELEMETRY_POLL_INTERVAL):
 			break
