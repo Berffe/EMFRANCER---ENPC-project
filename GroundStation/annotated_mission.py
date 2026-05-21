@@ -1,12 +1,39 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
+import numpy as np
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
 import cv2
+import os
+import contextlib
+
+@contextlib.contextmanager
+def _silence_stderr():
+	"""
+	Redirect stderr at the OS fd level to suppress C library output
+	(FFmpeg/OpenH264 codec probe messages).
+	Works on both Windows and Linux.
+	"""
+	devnull_fd = os.open(os.devnull, os.O_WRONLY)
+	old_stderr_fd = os.dup(2)
+	os.dup2(devnull_fd, 2)
+	os.close(devnull_fd)
+	try:
+		yield
+	finally:
+		os.dup2(old_stderr_fd, 2)
+		os.close(old_stderr_fd)
+
+
+# Output resolution scale factor.
+# 1.0 = full 1920x1080 (slow), 0.5 = 960x540 (~4x faster, good for review)
+OUTPUT_SCALE: float = 0.5
 
 
 # ----------------------------
@@ -323,14 +350,13 @@ def map_polygon(
 	pts: list[tuple[float, float]],
 	lores_size: tuple[int, int],
 	main_size: tuple[int, int],
-	bbox_map_mode: str,
+	mapper,
 ) -> list[tuple[int, int]]:
-	mapped = []
+	mapped = []	
 	for x, y in pts:
-		mx, my = map_point(x, y, lores_size, main_size, bbox_map_mode)
-		mapped.append((int(round(mx)), int(round(my))))
+		x1, y1, _, _ = mapper([x, y, x, y], lores_size, main_size)
+		mapped.append((int(round(x1)), int(round(y1))))
 	return mapped
-
 
 # ----------------------------
 # Drawing
@@ -377,7 +403,6 @@ def draw_detections_on_main(
 	bbox_map_mode: str,
 ) -> Any:
 	mapper = resolve_bbox_mapper(bbox_map_mode, lores_size, main_size)
-	out = frame.copy()
 	mw, mh = main_size
 
 	for det in detections:
@@ -396,10 +421,10 @@ def draw_detections_on_main(
 		name = class_names.get(cls, str(cls))
 		label = f"{name} {score:.2f}"
 
-		cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 0), 2)
-		draw_label(out, label, x1, y1)
+		cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+		draw_label(frame, label, x1, y1)
 
-	return out
+	return frame
 
 
 def draw_zones_on_main(
@@ -412,19 +437,20 @@ def draw_zones_on_main(
 	if alt_m is None:
 		return frame
 
+	mapper = resolve_bbox_mapper(bbox_map_mode, lores_size, main_size)
 	z1_lores, z2_lores = zone_vertices_lores(alt_m, lores_size)
-	z1_main = map_polygon(z1_lores, lores_size, main_size, bbox_map_mode)
-	z2_main = map_polygon(z2_lores, lores_size, main_size, bbox_map_mode)
+	z1_main = map_polygon(z1_lores, lores_size, main_size, mapper)
+	z2_main = map_polygon(z2_lores, lores_size, main_size, mapper)
 
 	out = frame.copy()
-	overlay = frame.copy()
+	overlay = out.copy()
 
-	cv2.fillPoly(overlay, [cv2.UMat(cv2.array(z1_main)) if False else __import__("numpy").array(z1_main, dtype="int32")], (0, 255, 255))
-	cv2.fillPoly(overlay, [__import__("numpy").array(z2_main, dtype="int32")], (0, 0, 255))
-	cv2.addWeighted(overlay, ZONE_DRAW_ALPHA, out, 1.0 - ZONE_DRAW_ALPHA, 0, out)
+	cv2.fillPoly(overlay, [np.array(z1_main, dtype="int32")], (0, 255, 255))
+	cv2.fillPoly(overlay, [np.array(z2_main, dtype="int32")], (0, 0, 255))
+	cv2.addWeighted(overlay, ZONE_DRAW_ALPHA, out, 1.0 - ZONE_DRAW_ALPHA, 0, out)  # writes into out
 
-	cv2.polylines(out, [__import__("numpy").array(z1_main, dtype="int32")], True, (0, 215, 255), 2)
-	cv2.polylines(out, [__import__("numpy").array(z2_main, dtype="int32")], True, (0, 0, 255), 2)
+	cv2.polylines(out, [np.array(z1_main, dtype="int32")], True, (0, 215, 255), 2)
+	cv2.polylines(out, [np.array(z2_main, dtype="int32")], True, (0, 0, 255), 2)
 
 	if z1_main:
 		x1, y1 = z1_main[0]
@@ -488,11 +514,15 @@ def make_video_writer(
 ) -> cv2.VideoWriter:
 	output_path.parent.mkdir(parents=True, exist_ok=True)
 
-	fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-	writer = cv2.VideoWriter(str(output_path), fourcc, fps, frame_size)
-	if not writer.isOpened():
-		raise RuntimeError(f"Could not open video writer: {output_path}")
-	return writer
+	for codec in ("avc1", "H264", "X264", "mp4v"):
+		fourcc = cv2.VideoWriter_fourcc(*codec)
+		with _silence_stderr():
+			writer = cv2.VideoWriter(str(output_path), fourcc, fps, frame_size)
+		if writer.isOpened():
+			return writer
+		writer.release()
+
+	raise RuntimeError(f"Could not open video writer with any codec for: {output_path}")
 
 
 def reconstruct_segment(
@@ -516,7 +546,9 @@ def reconstruct_segment(
 		width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or mission_meta.main_size[0]
 		height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or mission_meta.main_size[1]
 
-		writer = make_video_writer(output_path, fps, (width, height))
+		out_w = max(1, int(round(width  * OUTPUT_SCALE)))
+		out_h = max(1, int(round(height * OUTPUT_SCALE)))
+		writer = make_video_writer(output_path, fps, (out_w, out_h))
 		try:
 			frame_idx = 0
 			sample_idx = 0
@@ -567,12 +599,46 @@ def reconstruct_segment(
 				if show_overlay_info:
 					draw_overlay_info(frame, frame_idx, active_sample, active_telemetry)
 
+				if OUTPUT_SCALE != 1.0:
+					frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
 				writer.write(frame)
 				frame_idx += 1
 		finally:
 			writer.release()
 	finally:
 		cap.release()
+
+
+
+# ----------------------------
+# Module-level segment worker (must be module-level for Windows pickling)
+# ----------------------------
+
+def _process_segment(
+	det_path: Path,
+	video_dir: Path,
+	output_dir: Path,
+	telemetry_samples: list,
+	mission_meta,
+	class_names: dict,
+	bbox_map_mode: str,
+	show_overlay_info: bool,
+	draw_zones: bool,
+) -> None:
+	segment_stem = extract_segment_stem(det_path)
+	video_path   = find_matching_video(video_dir, segment_stem)
+	output_path  = output_dir / f"{segment_stem}.annotated.mp4"
+	reconstruct_segment(
+		video_path=video_path,
+		detections_path=det_path,
+		telemetry_samples=telemetry_samples,
+		mission_meta=mission_meta,
+		output_path=output_path,
+		class_names=class_names,
+		bbox_map_mode=bbox_map_mode,
+		show_overlay_info=show_overlay_info,
+		draw_zones=draw_zones,
+	)
 
 
 # ----------------------------
@@ -619,6 +685,7 @@ def reconstruct_mission(
 	if output_dir is None:
 		output_dir = mission_root / "annotated"
 
+	output_dir = mission_root / output_dir
 	output_dir.mkdir(parents=True, exist_ok=True)
 
 	print(f"[mission] root={mission_root}")
@@ -627,26 +694,26 @@ def reconstruct_mission(
 	print(f"[mission] logs_found={len(detections_logs)}")
 	print(f"[mission] telemetry_samples={len(telemetry_samples)}")
 
-	for det_path in detections_logs:
-		segment_stem = extract_segment_stem(det_path)
-		video_path = find_matching_video(video_dir, segment_stem)
-		output_path = output_dir / f"{segment_stem}.annotated.mp4"
+	worker = functools.partial(
+		_process_segment,
+		video_dir=video_dir,
+		output_dir=output_dir,
+		telemetry_samples=telemetry_samples,
+		mission_meta=mission_meta,
+		class_names=class_names,
+		bbox_map_mode=bbox_map_mode,
+		show_overlay_info=show_overlay_info,
+		draw_zones=draw_zones,
+	)
 
-		print(f"[segment] detections={det_path.name}")
-		print(f"[segment] video={video_path.name}")
-		print(f"[segment] out={output_path.name}")
-
-		reconstruct_segment(
-			video_path=video_path,
-			detections_path=det_path,
-			telemetry_samples=telemetry_samples,
-			mission_meta=mission_meta,
-			output_path=output_path,
-			class_names=class_names,
-			bbox_map_mode=bbox_map_mode,
-			show_overlay_info=show_overlay_info,
-			draw_zones=draw_zones,
-		)
+	if len(detections_logs) == 1:
+		print(f"[mission] processing 1 segment...")
+		worker(detections_logs[0])
+	else:
+		print(f"[mission] processing {len(detections_logs)} segments in parallel...")
+		with ProcessPoolExecutor() as pool:
+			for i, _ in enumerate(pool.map(worker, detections_logs), 1):
+				print(f"[mission] {i}/{len(detections_logs)} segments done")
 
 	print("[mission] reconstruction complete.")
 
@@ -688,6 +755,12 @@ def parse_args() -> argparse.Namespace:
 		),
 	)
 	parser.add_argument(
+		"--output-scale",
+		type=float,
+		default=0.5,
+		help="Output resolution scale. 1.0=full res (slow), 0.5=half res (default, ~4x faster).",
+	)
+	parser.add_argument(
 		"--no-overlay-info",
 		action="store_true",
 		help="Do not draw frame/sample timing info text.",
@@ -703,6 +776,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
 	args = parse_args()
+
+	global OUTPUT_SCALE
+	OUTPUT_SCALE = float(args.output_scale)
 
 	reconstruct_mission(
 		mission_root=args.mission_root,
