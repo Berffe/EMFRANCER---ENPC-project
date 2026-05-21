@@ -54,3 +54,4 @@ class VehicleStatePacket:
 	lon: float | None
 	voltage_V: float | None
 	gps_fix: int | None
+	battery_remaining: int | None = None

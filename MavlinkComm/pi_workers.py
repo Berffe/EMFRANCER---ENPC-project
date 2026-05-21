@@ -241,6 +241,7 @@ def telemetry_worker(stop_event, mavlink_client, telemetry_state) -> None:
 				lon=state.get("lon"),
 				voltage_V=state.get("voltage_V"),
 				gps_fix=state.get("gps_fix"),
+				battery_remaining=state.get("battery_remaining"),
 			)
 		except Exception as e:
 			print(f"[telemetry] read error: {e}")
@@ -277,6 +278,9 @@ def decision_worker(stop_event, detection_queue, command_queue, telemetry_state)
 			continue
 
 		vehicle_state = telemetry_state.get_snapshot()
+		if vehicle_state is None:
+			# print("[decision] waiting for first telemetry snapshot...")
+			continue
 		decision = engine.update(pkt, vehicle_state=vehicle_state)
 		if LOG_DECISION:
 			write_jsonl(decisions_path, asdict(decision))
