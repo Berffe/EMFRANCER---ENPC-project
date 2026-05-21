@@ -230,8 +230,9 @@ class MAVLinkClient:
 				self._state["last_gps_time"] = now
 
 			elif mtype == "SYS_STATUS":
-				# 65535 means unknown/unavailable in MAVLink.
-				if msg.voltage_battery != 65535:
+				# 65535 means unknown in MAVLink.
+				# 0 usually means no battery monitor / not configured in many bench setups.
+				if msg.voltage_battery not in (0, 65535):
 					self._state["voltage_V"] = msg.voltage_battery / 1000.0
 					self._state["last_battery_time"] = now
 
@@ -485,11 +486,23 @@ def run_diagnostics(connection_string: str) -> None:
 	lon = state.get("lon")
 	alt = state.get("altitude_m")
 
-	if lat is not None and lon is not None:
+	position_valid = (
+		lat is not None
+		and lon is not None
+		and fix is not None
+		and fix >= 2
+		and not (abs(lat) < 1e-7 and abs(lon) < 1e-7)
+	)
+
+	if position_valid:
 		alt_text = f"{alt:.1f}m" if alt is not None else "unknown"
 		print(f"{INFO} Position: lat={lat:.6f}  lon={lon:.6f}  alt={alt_text}")
 	else:
-		print(f"{WARN} Could not read position.")
+		alt_text = f"{alt:.1f}m" if alt is not None else "unknown"
+		print(
+			f"{WARN} Global position not valid yet "
+			f"(gps_fix={fix}, lat={lat}, lon={lon}, rel_alt={alt_text})."
+		)
 
 	print(f"\n{INFO} MAVLink messages seen:")
 	counts = client.get_message_counts()
