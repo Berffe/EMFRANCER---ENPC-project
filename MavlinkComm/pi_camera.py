@@ -4,7 +4,7 @@ from pathlib import Path
 
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
-from picamera2.outputs import FileOutput
+from picamera2.outputs import PyavOutput
 
 from pi_config import (
 	MAIN_SIZE,
@@ -86,7 +86,10 @@ class CameraManager:
 
 			segment_index = self._next_segment_index
 			out_path = VIDEO_DIR / f"segment_{segment_index:04d}.{CONTAINER_EXT}"
-			self.picam2.start_recording(self.encoder, FileOutput(str(out_path)))
+			self.picam2.start_recording(
+				self.encoder,
+				PyavOutput(str(out_path), format="matroska"),
+			)
 
 			start_ts = time.time()
 			with self._segment_lock:

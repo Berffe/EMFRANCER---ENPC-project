@@ -7,6 +7,7 @@ from datetime import datetime
 # ─────────────────────────────────────────────────────────────
 
 
+
 MODEL_DIR   = Path("MODEL_best_ncnn")
 META_PATH   = MODEL_DIR / "metadata.yaml"
 PARAM_PATH  = MODEL_DIR / "model.ncnn.param"
@@ -14,7 +15,7 @@ BIN_PATH    = MODEL_DIR / "model.ncnn.bin"
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-_mission_ts = datetime.now().strftime("%d_%m_%Y_%H%M%S")
+_mission_ts = datetime.now().strftime("%Y_%m_%d_%H%M%S")
 OUTPUT_ROOT = PROJECT_ROOT / f"mission_{_mission_ts}"
 VIDEO_DIR   = OUTPUT_ROOT / "video"
 LOG_DIR     = OUTPUT_ROOT / "logs"
@@ -28,7 +29,7 @@ LOG_DECISION = True 				# Optional right now
 
 
 MAIN_SIZE        = (1920, 1080)
-LORES_SIZE       = (512, 288) ## Try (320, 192)
+LORES_SIZE       = (320, 192) ## Try (320, 192)
 FRAME_RATE       = 30
 SEGMENT_SECONDS  = 120
 INFERENCE_PERIOD = 0.5
@@ -36,7 +37,7 @@ CONF_THRESH      = 0.25
 IOU_THRESH       = 0.45
 DISPLAY          = False
 SAVE_DEBUG_FRAME_EVERY = 0
-CONTAINER_EXT    = "h264"
+CONTAINER_EXT    = "mkv"
 VIDEO_BITRATE    = 8_000_000
 BUFFER_COUNT = 8
 INF_THREADS = 2
@@ -46,7 +47,7 @@ INF_THREADS = 2
 # MAVLINK COMMUNICATION PARAMETERS
 # ─────────────────────────────────────────────────────────────
 
-MAVLINK_ENABLED = False
+MAVLINK_ENABLED = True
 MAVLINK_CONNECTION = "/dev/ttyAMA0,57600"
 MAVLINK_SUPPRESS_DUPLICATES = True
 
