@@ -727,8 +727,9 @@ def reconstruct_mission(
 
 	if output_dir is None:
 		output_dir = mission_root / "annotated"
+	else : 
+		output_dir = mission_root / output_dir
 
-	output_dir = mission_root / output_dir
 	output_dir.mkdir(parents=True, exist_ok=True)
 
 	print(f"[mission] root={mission_root}")
