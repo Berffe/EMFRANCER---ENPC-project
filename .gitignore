@@ -4,8 +4,15 @@ __pycache__/
 *$py.class
 *.pt
 venv
+*ncnn
 
 dataset
+debug
+mission_*
+annotated
 runs
 output
+logs
+video
 yolov8n_ncnn_model
+best_ncnn_model

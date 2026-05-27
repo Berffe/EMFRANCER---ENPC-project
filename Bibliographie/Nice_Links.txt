@@ -1,4 +1,4 @@
-CONTROLLING/ AUTOPILOT
+### CONTROLLING/ AUTOPILOT
 
 https://github.com/TimothyDelille/Teaching-a-Drone-to-Detect-Target-on-Artificially-Generated-Data
 https://www.youtube.com/watch?v=xSOaeSd1AlM
@@ -20,3 +20,16 @@ https://ardupilot.org/copter/docs/initial-setup.html?utm_source=chatgpt.com – 
 https://ardupilot.org/copter/docs/common-lua-scripts.html?utm_source=chatgpt.com – enable scripts, examples, safety sandbox.
 https://ardupilot.org/plane/docs/common-scripting-parameters.html?utm_source=chatgpt.com – change/tune params in flight (e.g., lookahead or WP radius)
 https://ardupilot.org/copter/docs/common-scripting-step-by-step.html?utm_source=chatgpt.com - Step-by-step script usage
+
+### RASPBERRY PI
+https://ardupilot.org/plane/docs/aborting-autolanding.html
+https://pypi.org/project/pymavlink/
+https://mavlink.io/en/getting_started/installation.html
+
+### ARDUPILOT
+https://ardupilot.org/plane/docs/aborting-autolanding.html
+
+### PIXHAWK <----> MAVLINK <----> RASPBERRY PI
+https://www.youtube.com/watch?v=kB9YyG2V-nA
+https://www.youtube.com/watch?v=DGAB34fJQFc
+https://ardupilot.org/plane/docs/aborting-autolanding.html?utm_source=chatgpt.com
