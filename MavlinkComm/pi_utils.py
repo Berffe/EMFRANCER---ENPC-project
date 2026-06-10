@@ -52,6 +52,18 @@ def _sanitize_for_json(obj: Any) -> Any:
 	return obj
 
 
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+	safe_payload = _sanitize_for_json(payload)
+
+	with open(path, "w", encoding="utf-8") as f:
+		json.dump(
+			safe_payload,
+			f,
+			indent=2,
+			allow_nan=False,
+		)
+
+
 def write_jsonl(path: Path, payload: dict[str, Any], fsync: bool = False) -> None:
 	safe_payload = _sanitize_for_json(payload)
 
@@ -68,8 +80,9 @@ def write_jsonl(path: Path, payload: dict[str, Any], fsync: bool = False) -> Non
 		if fsync:
 			os.fsync(f.fileno())
 
+
 def write_mission_meta() -> None:
-	write_jsonl(
+	write_json(
 		LOG_DIR / "mission_meta.json",
 		{
 			"main_size": list(MAIN_SIZE),
@@ -78,10 +91,6 @@ def write_mission_meta() -> None:
 			"inference_period": INFERENCE_PERIOD,
 		},
 	)
-
-def write_jsonl(path: Path, payload: dict[str, Any]) -> None:
-	with open(path, "a", encoding="utf-8") as f:
-		f.write(json.dumps(payload) + "\n")
 
 def latest_put(q, item: Any, retries: int = 3, delay: float = 0.001) -> None:
 	"""
