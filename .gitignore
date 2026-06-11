@@ -5,6 +5,7 @@ __pycache__/
 *.pt
 venv
 *ncnn
+*.zip
 
 dataset
 debug
